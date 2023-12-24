@@ -790,7 +790,7 @@ void Instance::play(const AudioMsgId &audioId) {
 		playStreamed(audioId, std::move(shared));
 	}
 	if (document->isVoiceMessage() || document->isVideoMessage()) {
-		document->owner().markMediaRead(document);
+		// document->owner().markMediaRead(document);
 	}
 	_playerStartedPlay.fire_copy({audioId.type()});
 }
