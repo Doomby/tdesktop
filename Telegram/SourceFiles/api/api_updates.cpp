@@ -906,7 +906,7 @@ void Updates::updateOnline(crl::time lastNonIdleTime, bool gotOtherOffline) {
 	bool isOnline = Core::App().hasActiveWindow(&session());
 	int updateIn = config.onlineUpdatePeriod;
 	Assert(updateIn >= 0);
-	if (isOnline) {
+	/* if (isOnline) {
 		const auto idle = crl::now() - lastNonIdleTime;
 		if (idle >= config.offlineIdleTimeout) {
 			isOnline = false;
@@ -918,22 +918,22 @@ void Updates::updateOnline(crl::time lastNonIdleTime, bool gotOtherOffline) {
 			updateIn = qMin(updateIn, int(config.offlineIdleTimeout - idle));
 			Assert(updateIn >= 0);
 		}
-	}
+	} */
 	auto ms = crl::now();
-	if (isOnline != _lastWasOnline
+	/* if (isOnline != _lastWasOnline
 		|| (isOnline && _lastSetOnline + config.onlineUpdatePeriod <= ms)
-		|| (isOnline && gotOtherOffline)) {
+		|| (isOnline && gotOtherOffline)) { */
 		api().request(base::take(_onlineRequest)).cancel();
 
-		_lastWasOnline = isOnline;
+		_lastWasOnline = true;
 		_lastSetOnline = ms;
 		if (!Core::Quitting()) {
 			_onlineRequest = api().request(MTPaccount_UpdateStatus(
-				MTP_bool(!isOnline)
+				MTP_bool(true)
 			)).send();
 		} else {
 			_onlineRequest = api().request(MTPaccount_UpdateStatus(
-				MTP_bool(!isOnline)
+				MTP_bool(true)
 			)).done([=] {
 				Core::App().quitPreventFinished();
 			}).fail([=] {
@@ -942,7 +942,7 @@ void Updates::updateOnline(crl::time lastNonIdleTime, bool gotOtherOffline) {
 		}
 
 		const auto self = session().user();
-		self->onlineTill = base::unixtime::now() + (isOnline ? (config.onlineUpdatePeriod / 1000) : -1);
+		// self->onlineTill = base::unixtime::now() + (isOnline ? (config.onlineUpdatePeriod / 1000) : -1);
 		session().changes().peerUpdated(
 			self,
 			Data::PeerUpdate::Flag::OnlineStatus);
@@ -952,10 +952,10 @@ void Updates::updateOnline(crl::time lastNonIdleTime, bool gotOtherOffline) {
 		}
 
 		_lastSetOnline = ms;
-	} else if (isOnline) {
+	/* } else if (isOnline) {
 		updateIn = qMin(updateIn, int(_lastSetOnline + config.onlineUpdatePeriod - ms));
 		Assert(updateIn >= 0);
-	}
+	} */
 	_onlineTimer.callOnce(updateIn);
 }
 
