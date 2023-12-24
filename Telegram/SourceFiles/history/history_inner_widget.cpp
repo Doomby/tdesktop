@@ -2755,11 +2755,13 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 }
 
 bool HistoryInner::hasCopyRestriction(HistoryItem *item) const {
+	return false;
 	return !_peer->allowsForwarding() || (item && item->forbidsForward());
 }
 
 bool HistoryInner::hasCopyMediaRestriction(
 		not_null<HistoryItem*> item) const {
+	return false;
 	return hasCopyRestriction(item) || item->forbidsSaving();
 }
 
