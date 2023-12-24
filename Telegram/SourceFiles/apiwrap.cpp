@@ -722,9 +722,9 @@ QString ApiWrap::exportDirectMessageLink(
 				}
 			}
 		}
-		const auto base = linkChannel->hasUsername()
+		const auto base = /* linkChannel->hasUsername()
 			? linkChannel->username()
-			: "c/" + QString::number(peerToChannel(linkChannel->id).bare);
+			: */ "c/" + QString::number(peerToChannel(linkChannel->id).bare);
 		const auto post = QString::number(linkItemId.bare);
 		const auto query = base
 			+ '/'
