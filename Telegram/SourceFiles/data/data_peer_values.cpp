@@ -427,28 +427,28 @@ QString OnlineText(TimeId online, TimeId now) {
 	if (const auto common = OnlineTextCommon(online, now)) {
 		return *common;
 	}
-	const auto minutes = (now - online) / 60;
-	if (!minutes) {
-		return tr::lng_status_lastseen_now(tr::now);
-	} else if (minutes < 60) {
-		return tr::lng_status_lastseen_minutes(tr::now, lt_count, minutes);
-	}
-	const auto hours = (now - online) / 3600;
-	if (hours < 12) {
-		return tr::lng_status_lastseen_hours(tr::now, lt_count, hours);
-	}
 	const auto onlineFull = base::unixtime::parse(online);
 	const auto nowFull = base::unixtime::parse(now);
 	const auto locale = QLocale();
-	if (onlineFull.date() == nowFull.date()) {
 		const auto onlineTime = locale.toString(onlineFull.time(), QLocale::ShortFormat);
+	const auto minutes = (now - online) / 60;
+	if (!minutes) {
+		return tr::lng_status_lastseen_now(tr::now) + " (" + onlineTime + ")";
+	} else if (minutes < 60) {
+		return tr::lng_status_lastseen_minutes(tr::now, lt_count, minutes) + " (" + onlineTime + ")";
+	}
+	/* const auto hours = (now - online) / 3600;
+	if (hours < 12) {
+		return tr::lng_status_lastseen_hours(tr::now, lt_count, hours);
+	} */
+	if (onlineFull.date() == nowFull.date()) {
 		return tr::lng_status_lastseen_today(tr::now, lt_time, onlineTime);
 	} else if (onlineFull.date().addDays(1) == nowFull.date()) {
-		const auto onlineTime = locale.toString(onlineFull.time(), QLocale::ShortFormat);
 		return tr::lng_status_lastseen_yesterday(tr::now, lt_time, onlineTime);
 	}
 	const auto date = locale.toString(onlineFull.date(), QLocale::ShortFormat);
-	return tr::lng_status_lastseen_date(tr::now, lt_date, date);
+	const auto time = locale.toString(onlineFull.time(), QLocale::ShortFormat);
+	return tr::lng_status_lastseen_date_time(tr::now, lt_date, date, lt_time, time);
 }
 
 QString OnlineText(not_null<UserData*> user, TimeId now) {
