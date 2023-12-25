@@ -750,9 +750,7 @@ QString ApiWrap::exportDirectMessageLink(
 		return session().createInternalLinkFull(query);
 	};
 	const auto i = _unlikelyMessageLinks.find(itemId);
-	const auto current = (i != end(_unlikelyMessageLinks))
-		? i->second
-		: fallback();
+	const auto current = fallback();
 	request(MTPchannels_ExportMessageLink(
 		MTP_flags(inRepliesContext
 			? MTPchannels_ExportMessageLink::Flag::f_thread
