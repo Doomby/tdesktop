@@ -423,14 +423,13 @@ QString OnlineText(Data::LastseenStatus status, TimeId now) {
 	if (const auto common = OnlineTextCommon(status, now)) {
 		return *common;
 	}
-
+	const auto till = status.onlineTill();
+	Assert(till > 0);
 	const auto onlineFull = base::unixtime::parse(till);
 	const auto nowFull = base::unixtime::parse(now);
 	const auto locale = QLocale();
-	const auto till = status.onlineTill();
-	Assert(till > 0);
-	const auto minutes = (now - till) / 60;
 	const auto onlineTime = locale.toString(onlineFull.time(), QLocale::ShortFormat);
+	const auto minutes = (now - till) / 60;
 	if (!minutes) {
 		return tr::lng_status_lastseen_now(tr::now) + " (" + onlineTime + ")";
 	} else if (minutes < 60) {
