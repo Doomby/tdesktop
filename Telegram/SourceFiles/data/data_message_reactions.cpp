@@ -10,7 +10,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "history/history_item.h"
 #include "main/main_session.h"
-#include "main/main_account.h"
 #include "main/main_app_config.h"
 #include "main/session/send_as_peers.h"
 #include "data/data_user.h"
@@ -100,7 +99,7 @@ constexpr auto kTopReactionsLimit = 14;
 
 [[nodiscard]] int SentReactionsLimit(not_null<HistoryItem*> item) {
 	const auto session = &item->history()->session();
-	const auto config = &session->account().appConfig();
+	const auto config = &session->appConfig();
 	return session->premium()
 		? config->get<int>("reactions_user_max_premium", 3)
 		: config->get<int>("reactions_user_max_default", 1);
@@ -417,7 +416,7 @@ void Reactions::decrementMyTag(const ReactionId &id, SavedSublist *sublist) {
 	}
 	auto &my = _myTags[sublist];
 	auto i = ranges::find(my.info, id, &MyTagInfo::id);
-	if (i->count > 0) {
+	if (i != end(my.info) && i->count > 0) {
 		--i->count;
 		while (i + 1 != end(my.info)) {
 			auto j = i + 1;

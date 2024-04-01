@@ -10,12 +10,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "dialogs/dialogs_three_state_icon.h"
 #include "dialogs/ui/dialogs_layout.h"
 #include "dialogs/ui/dialogs_stories_content.h"
-#include "dialogs/ui/dialogs_stories_list.h"
 #include "dialogs/ui/dialogs_video_userpic.h"
 #include "dialogs/dialogs_indexed_list.h"
 #include "dialogs/dialogs_widget.h"
 #include "dialogs/dialogs_search_from_controllers.h"
 #include "dialogs/dialogs_search_tags.h"
+#include "history/view/history_view_context_menu.h"
 #include "history/history.h"
 #include "history/history_item.h"
 #include "core/application.h"
@@ -3010,6 +3010,16 @@ void InnerWidget::searchInChat(
 				update(0, searchInChatOffset(), width(), height);
 			}, _searchTags->lifetime());
 
+			_searchTags->menuRequests(
+			) | rpl::start_with_next([=](Data::ReactionId id) {
+				HistoryView::ShowTagInListMenu(
+					&_menu,
+					_lastMousePosition.value_or(QCursor::pos()),
+					this,
+					id,
+					_controller);
+			}, _searchTags->lifetime());
+
 			_searchTags->heightValue() | rpl::skip(
 				1
 			) | rpl::start_with_next([=] {
@@ -4000,6 +4010,24 @@ void InnerWidget::setupShortcuts() {
 			}
 			return true;
 		});
+
+		(!_openedForum)
+			&& request->check(Command::ArchiveChat)
+			&& request->handle([=] {
+				const auto thread = _selected ? _selected->thread() : nullptr;
+				if (!thread) {
+					return false;
+				}
+				const auto history = thread->owningHistory();
+				const auto isArchived = history->folder()
+					&& (history->folder()->id() == Data::Folder::kId);
+				
+				Window::ToggleHistoryArchived(
+					_controller->uiShow(),
+					history,
+					!isArchived);
+				return true;
+			});
 
 		request->check(Command::ShowContacts) && request->handle([=] {
 			_controller->show(PrepareContactsBox(_controller));
