@@ -19,6 +19,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_menu_set_status" = "Set Emoji Status";
 "lng_menu_change_status" = "Change Emoji Status";
 "lng_menu_my_stories" = "My Stories";
+"lng_menu_my_groups" = "My Groups";
+"lng_menu_my_channels" = "My Channels";
 
 "lng_disable_notifications_from_tray" = "Disable notifications";
 "lng_enable_notifications_from_tray" = "Enable notifications";
@@ -469,6 +471,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 "lng_bio_placeholder" = "Bio";
 
+"lng_collectible_username_title" = "{username} is a collectible username that belongs to";
+"lng_collectible_username_info" = "This username was bought on **Fragment** on {date} for {price}";
+"lng_collectible_username_copy" = "Copy Link";
+"lng_collectible_phone_title" = "{phone} is a collectible phone number that belongs to";
+"lng_collectible_phone_info" = "This phone number was bought on **Fragment** on {date} for {price}";
+"lng_collectible_phone_copy" = "Copy Phone Number";
+"lng_collectible_learn_more" = "Learn More";
+
 "lng_settings_section_info" = "My info";
 
 "lng_settings_section_notify" = "Notifications";
@@ -724,6 +734,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_settings_sensitive_disable_filtering" = "Disable filtering";
 "lng_settings_sensitive_about" = "Display sensitive media in public channels on all your Telegram devices.";
 "lng_settings_security_bots" = "Bots and websites";
+"lng_settings_file_confirmations" = "File open confirmations";
+"lng_settings_edit_extensions" = "Extensions whitelist";
+"lng_settings_edit_extensions_about" = "Open files with the following extensions without additional confirmation.";
+"lng_settings_edit_ip_confirm" = "IP reveal warning";
+"lng_settings_edit_ip_confirm_about" = "Show confirmation when opening files that may reveal your IP address.";
 "lng_settings_clear_payment_info" = "Clear Payment and Shipping Info";
 "lng_settings_logged_in" = "Connected websites";
 "lng_settings_logged_in_title" = "Logged in with Telegram";
@@ -1058,6 +1073,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_settings_faq_button" = "Go to FAQ";
 "lng_settings_ask_ok" = "Ask a Volunteer";
 "lng_settings_faq" = "Telegram FAQ";
+"lng_settings_faq_link" = "https://telegram.org/faq#general-questions";
 "lng_settings_features" = "Telegram Features";
 "lng_settings_logout" = "Log Out";
 "lng_sure_logout" = "Are you sure you want to log out?";
@@ -4469,10 +4485,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_translate_settings_about" = "The 'Translate' button will appear when you open a context menu on a text message.";
 "lng_translate_settings_one" = "Please choose at least one language so that it can be used as the \"Translate to\" language.";
 
-"lng_launch_exe_warning" = "This file has a {extension} extension.\nAre you sure you want to run it?";
+"lng_launch_exe_warning" = "This file has {extension} extension.\nAre you sure you want to run it?";
+"lng_launch_other_warning" = "This file has {extension} extension.\nAre you sure you want to open it?";
 "lng_launch_svg_warning" = "Opening this file can potentially expose your IP address to its sender. Continue?";
 "lng_launch_exe_sure" = "Run";
+"lng_launch_other_sure" = "Open";
 "lng_launch_exe_dont_ask" = "Don't ask me again";
+"lng_launch_dont_ask" = "Remember for this file type";
+"lng_launch_dont_ask_settings" = "You can later edit trusted file types in Settings > Privacy and Security > File open confirmations.";
 
 "lng_polls_anonymous" = "Anonymous Poll";
 "lng_polls_public" = "Poll";
@@ -5040,6 +5060,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_channel_earn_learn_coin_title" = "What is {emoji} TON?";
 "lng_channel_earn_learn_coin_about" = "TON is a blockchain platform and cryptocurrency that Telegram uses for its high speed and low commissions on transactions. {link}";
 "lng_channel_earn_learn_close" = "Got it";
+"lng_channel_earn_learn_coin_link" = "https://telegram.org/blog/monetization-for-channels";
 "lng_channel_earn_chart_top_hours" = "Ad impressions";
 "lng_channel_earn_chart_revenue" = "Ad revenue";
 "lng_channel_earn_chart_overriden_detail_currency" = "Revenue in TON";

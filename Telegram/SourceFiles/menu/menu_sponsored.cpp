@@ -10,9 +10,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/premium_preview_box.h"
 #include "chat_helpers/compose/compose_show.h"
 #include "core/ui_integration.h" // Core::MarkedTextContext.
+#include "data/components/sponsored_messages.h"
 #include "data/data_premium_limits.h"
 #include "data/data_session.h"
-#include "data/data_sponsored_messages.h"
 #include "data/stickers/data_custom_emoji.h"
 #include "history/history.h"
 #include "lang/lang_keys.h"
@@ -60,6 +60,7 @@ void AboutBox(
 		widget->paintRequest(
 		) | rpl::start_with_next([=] {
 			auto p = Painter(widget);
+			auto hq = PainterHighQualityEnabler(p);
 			p.setPen(Qt::NoPen);
 			p.setBrush(st::activeButtonBg);
 			p.drawEllipse(rect);
@@ -216,7 +217,7 @@ void ShowReportSponsoredBox(
 		std::shared_ptr<ChatHelpers::Show> show,
 		not_null<HistoryItem*> item) {
 	const auto peer = item->history()->peer;
-	auto &sponsoredMessages = peer->session().data().sponsoredMessages();
+	auto &sponsoredMessages = peer->session().sponsoredMessages();
 	const auto fullId = item->fullId();
 	const auto report = sponsoredMessages.createReportCallback(fullId);
 	const auto guideLink = Ui::Text::Link(

@@ -54,6 +54,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/unixtime.h"
 #include "base/call_delayed.h"
 #include "data/business/data_shortcut_messages.h"
+#include "data/components/scheduled_messages.h"
+#include "data/components/sponsored_messages.h"
 #include "data/notify/data_notify_settings.h"
 #include "data/data_changes.h"
 #include "data/data_drafts.h"
@@ -68,8 +70,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_forum_topic.h"
 #include "data/data_user.h"
 #include "data/data_chat_filters.h"
-#include "data/data_scheduled_messages.h"
-#include "data/data_sponsored_messages.h"
 #include "data/data_file_origin.h"
 #include "data/data_histories.h"
 #include "data/data_group_call.h"
@@ -311,7 +311,7 @@ HistoryWidget::HistoryWidget(
 	) | rpl::start_with_next([=] {
 		if (_history
 			&& _history->loadedAtBottom()
-			&& session().data().sponsoredMessages().append(_history)) {
+			&& session().sponsoredMessages().append(_history)) {
 			_scroll->contentAdded();
 		}
 	}, lifetime());
@@ -2216,7 +2216,7 @@ void HistoryWidget::showHistory(
 			return;
 		} else {
 			_sponsoredMessagesStateKnown = false;
-			session().data().sponsoredMessages().clearItems(_history);
+			session().sponsoredMessages().clearItems(_history);
 			session().data().hideShownSpoilers();
 			_composeSearch = nullptr;
 		}
@@ -2466,20 +2466,18 @@ void HistoryWidget::showHistory(
 				if (history != _history) {
 					return;
 				}
-				auto &sponsored = session().data().sponsoredMessages();
 				using State = Data::SponsoredMessages::State;
-				const auto state = sponsored.state(_history);
+				const auto state = session().sponsoredMessages().state(
+					_history);
 				_sponsoredMessagesStateKnown = (state != State::None);
 				if (state == State::AppendToEnd) {
 					_scroll->setTrackingContent(
-						sponsored.canHaveFor(_history));
+						session().sponsoredMessages().canHaveFor(_history));
 				} else if (state == State::InjectToMiddle) {
 					injectSponsoredMessages();
 				}
 			});
-			session().data().sponsoredMessages().request(
-				_history,
-				checkState);
+			session().sponsoredMessages().request(_history, checkState);
 			checkState();
 		}
 	} else {
@@ -2583,7 +2581,7 @@ void HistoryWidget::setupPreview() {
 }
 
 void HistoryWidget::injectSponsoredMessages() const {
-	session().data().sponsoredMessages().inject(
+	session().sponsoredMessages().inject(
 		_history,
 		_showAtMsgId,
 		_scroll->height() * 2,
@@ -2774,9 +2772,9 @@ void HistoryWidget::setupScheduledToggle() {
 	controller()->activeChatValue(
 	) | rpl::map([=](Dialogs::Key key) -> rpl::producer<> {
 		if (const auto history = key.history()) {
-			return session().data().scheduledMessages().updates(history);
+			return session().scheduledMessages().updates(history);
 		} else if (const auto topic = key.topic()) {
-			return session().data().scheduledMessages().updates(
+			return session().scheduledMessages().updates(
 				topic->owningHistory());
 		}
 		return rpl::never<rpl::empty_value>();
@@ -2791,7 +2789,7 @@ void HistoryWidget::setupScheduledToggle() {
 void HistoryWidget::refreshScheduledToggle() {
 	const auto has = _history
 		&& _canSendMessages
-		&& (session().data().scheduledMessages().count(_history) > 0);
+		&& (session().scheduledMessages().count(_history) > 0);
 	if (!_scheduled && has) {
 		_scheduled.create(this, st::historyScheduledToggle);
 		_scheduled->show();
@@ -3631,7 +3629,7 @@ void HistoryWidget::loadMessagesDown() {
 	auto from = loadMigrated ? _migrated : _history;
 	if (from->loadedAtBottom()) {
 		if (_sponsoredMessagesStateKnown) {
-			session().data().sponsoredMessages().request(_history, nullptr);
+			session().sponsoredMessages().request(_history, nullptr);
 		}
 		return;
 	}
@@ -4496,7 +4494,7 @@ void HistoryWidget::chooseAttach(
 	}
 
 	const auto filter = (overrideSendImagesAsPhotos == true)
-		? FileDialog::ImagesOrAllFilter()
+		? FileDialog::PhotoVideoFilesFilter()
 		: FileDialog::AllOrImagesFilter();
 
 	FileDialog::GetOpenPaths(this, tr::lng_choose_files(tr::now), filter, crl::guard(this, [=](
@@ -6244,8 +6242,7 @@ void HistoryWidget::startItemRevealAnimations() {
 void HistoryWidget::startMessageSendingAnimation(
 		not_null<HistoryItem*> item) {
 	auto &sendingAnimation = controller()->sendingAnimation();
-	if (!sendingAnimation.hasLocalMessage(item->fullId().msg)
-		|| !sendingAnimation.checkExpectedType(item)) {
+	if (!sendingAnimation.checkExpectedType(item)) {
 		return;
 	}
 	Assert(item->mainView() != nullptr);
@@ -6257,14 +6254,16 @@ void HistoryWidget::startMessageSendingAnimation(
 		geometryValue() | rpl::to_empty,
 		_scroll->geometryValue() | rpl::to_empty,
 		_list->geometryValue() | rpl::to_empty
-	) | rpl::map([=] {
+	) | rpl::map([=]() -> std::optional<QPoint> {
 		const auto view = item->mainView();
+		const auto top = view ? _list->itemTop(view) : -1;
+		if (top < 0) {
+			return std::nullopt;
+		}
 		const auto additional = (_list->height() == _scroll->height())
 			? view->height()
 			: 0;
-		return _list->mapToGlobal(QPoint(
-			0,
-			_list->itemTop(view) - additional));
+		return _list->mapToGlobal(QPoint(0, top - additional));
 	});
 
 	sendingAnimation.startAnimation({
