@@ -747,9 +747,9 @@ QString ApiWrap::exportDirectMessageLink(
 				}
 			}
 		}
-		const auto base = linkChannel->hasUsername()
+		const auto base = /* linkChannel->hasUsername()
 			? linkChannel->username()
-			: "c/" + QString::number(peerToChannel(linkChannel->id).bare);
+			: */ "c/" + QString::number(peerToChannel(linkChannel->id).bare);
 		const auto post = QString::number(linkItemId.bare);
 		const auto query = base
 			+ '/'
@@ -775,9 +775,7 @@ QString ApiWrap::exportDirectMessageLink(
 		return session().createInternalLinkFull(query);
 	};
 	const auto i = _unlikelyMessageLinks.find(itemId);
-	const auto current = (i != end(_unlikelyMessageLinks))
-		? i->second
-		: fallback();
+	const auto current = fallback();
 	request(MTPchannels_ExportMessageLink(
 		MTP_flags(inRepliesContext
 			? MTPchannels_ExportMessageLink::Flag::f_thread
