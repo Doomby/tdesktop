@@ -20,6 +20,8 @@ class ReactionFlyAnimation;
 
 namespace Data {
 class Reactions;
+struct ReactionId;
+struct MessageReaction;
 } // namespace Data
 
 namespace HistoryView {
@@ -31,6 +33,8 @@ struct TextState;
 
 class BottomInfo final : public Object {
 public:
+	using ReactionId = ::Data::ReactionId;
+	using MessageReaction = ::Data::MessageReaction;
 	struct Data {
 		enum class Flag : uchar {
 			Edited         = 0x01,
@@ -48,7 +52,7 @@ public:
 
 		QDateTime date;
 		QString author;
-		EffectId effectId = 0;
+		std::vector<MessageReaction> reactions;
 		std::optional<int> views;
 		std::optional<int> replies;
 		std::optional<int> forwardsCount;
@@ -62,7 +66,7 @@ public:
 	[[nodiscard]] int firstLineWidth() const;
 	[[nodiscard]] bool isWide() const;
 	[[nodiscard]] TextState textState(
-		not_null<const Message*> view,
+		not_null<const HistoryItem*> item,
 		QPoint position) const;
 	[[nodiscard]] bool isSignedAuthorElided() const;
 
@@ -74,28 +78,29 @@ public:
 		bool inverted,
 		const PaintContext &context) const;
 
-	void animateEffect(
+	void animateReaction(
 		Ui::ReactionFlyAnimationArgs &&args,
 		Fn<void()> repaint);
-	[[nodiscard]] auto takeEffectAnimation()
-		-> std::unique_ptr<Ui::ReactionFlyAnimation>;
-	void continueEffectAnimation(
-		std::unique_ptr<Ui::ReactionFlyAnimation> animation);
-
-	QRect effectIconGeometry() const;
+	[[nodiscard]] auto takeReactionAnimations()
+		-> base::flat_map<
+			ReactionId,
+			std::unique_ptr<Ui::ReactionFlyAnimation>>;
+	void continueReactionAnimations(base::flat_map<
+		ReactionId,
+		std::unique_ptr<Ui::ReactionFlyAnimation>> animations);
 
 private:
-	struct Effect;
+	struct Reaction;
 
 	void layout();
 	void layoutDateText();
 	void layoutViewsText();
 	void layoutRepliesText();
-	void layoutEffectText();
+	void layoutReactionsText();
 
-	[[nodiscard]] int countEffectMaxWidth() const;
-	[[nodiscard]] int countEffectHeight(int newWidth) const;
-	void paintEffect(
+	[[nodiscard]] int countReactionsMaxWidth() const;
+	[[nodiscard]] int countReactionsHeight(int newWidth) const;
+	void paintReactions(
 		Painter &p,
 		QPoint origin,
 		int left,
@@ -106,21 +111,23 @@ private:
 	QSize countOptimalSize() override;
 	QSize countCurrentSize(int newWidth) override;
 
-	[[nodiscard]] Effect prepareEffectWithId(EffectId id);
-	[[nodiscard]] ClickHandlerPtr replayEffectLink(
-		not_null<const Message*> view,
+	void setReactionCount(Reaction &reaction, int count);
+	[[nodiscard]] Reaction prepareReactionWithId(
+		const ReactionId &id);
+	[[nodiscard]] ClickHandlerPtr revokeReactionLink(
+		not_null<const HistoryItem*> item,
 		QPoint position) const;
-	[[nodiscard]] ClickHandlerPtr replayEffectLink(
-		not_null<const Message*> view) const;
+	[[nodiscard]] ClickHandlerPtr revokeReactionLink(
+		not_null<const HistoryItem*> item) const;
 
 	const not_null<::Data::Reactions*> _reactionsOwner;
 	Data _data;
 	Ui::Text::String _authorEditedDate;
 	Ui::Text::String _views;
 	Ui::Text::String _replies;
-	std::unique_ptr<Effect> _effect;
-	mutable ClickHandlerPtr _replayLink;
-	int _effectMaxWidth = 0;
+	std::vector<Reaction> _reactions;
+	mutable ClickHandlerPtr _revokeLink;
+	int _reactionsMaxWidth = 0;
 	bool _authorElided = false;
 
 };

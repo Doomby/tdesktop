@@ -7,15 +7,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
-#include "api/api_common.h"
-
 namespace style {
 struct ComposeIcons;
 } // namespace style
 
-namespace ChatHelpers {
-class Show;
-} // namespace ChatHelpers
+namespace Api {
+struct SendOptions;
+} // namespace Api
 
 namespace Ui {
 class PopupMenu;
@@ -29,7 +27,7 @@ class Thread;
 
 namespace SendMenu {
 
-enum class Type : uchar {
+enum class Type {
 	Disabled,
 	SilentOnly,
 	Scheduled,
@@ -37,62 +35,32 @@ enum class Type : uchar {
 	Reminder,
 };
 
-enum class SpoilerState : uchar {
+enum class FillMenuResult {
+	Success,
 	None,
-	Enabled,
-	Possible,
 };
 
-enum class CaptionState : uchar {
-	None,
-	Below,
-	Above,
-};
-
-struct Details {
-	Type type = Type::Disabled;
-	SpoilerState spoiler = SpoilerState::None;
-	CaptionState caption = CaptionState::None;
-	bool effectAllowed = false;
-};
-
-enum class FillMenuResult : uchar {
-	Prepared,
-	Skipped,
-	Failed,
-};
-
-enum class ActionType : uchar {
-	Send,
-	Schedule,
-	SpoilerOn,
-	SpoilerOff,
-	CaptionUp,
-	CaptionDown,
-};
-struct Action {
-	using Type = ActionType;
-
-	Api::SendOptions options;
-	Type type = Type::Send;
-};
-[[nodiscard]] Fn<void(Action, Details)> DefaultCallback(
-	std::shared_ptr<ChatHelpers::Show> show,
+Fn<void()> DefaultSilentCallback(Fn<void(Api::SendOptions)> send);
+Fn<void()> DefaultScheduleCallback(
+	std::shared_ptr<Ui::Show> show,
+	Type type,
 	Fn<void(Api::SendOptions)> send);
+Fn<void()> DefaultWhenOnlineCallback(Fn<void(Api::SendOptions)> send);
 
 FillMenuResult FillSendMenu(
 	not_null<Ui::PopupMenu*> menu,
-	std::shared_ptr<ChatHelpers::Show> showForEffect,
-	Details details,
-	Fn<void(Action, Details)> action,
-	const style::ComposeIcons *iconsOverride = nullptr,
-	std::optional<QPoint> desiredPositionOverride = std::nullopt);
+	Type type,
+	Fn<void()> silent,
+	Fn<void()> schedule,
+	Fn<void()> whenOnline,
+	const style::ComposeIcons *iconsOverride = nullptr);
 
 void SetupMenuAndShortcuts(
 	not_null<Ui::RpWidget*> button,
-	std::shared_ptr<ChatHelpers::Show> show,
-	Fn<Details()> details,
-	Fn<void(Action, Details)> action);
+	Fn<Type()> type,
+	Fn<void()> silent,
+	Fn<void()> schedule,
+	Fn<void()> whenOnline);
 
 void SetupUnreadMentionsMenu(
 	not_null<Ui::RpWidget*> button,

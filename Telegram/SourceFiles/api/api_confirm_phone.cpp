@@ -97,10 +97,8 @@ void ConfirmPhone::resolve(
 			box->resendRequests(
 			) | rpl::start_with_next([=] {
 				_api.request(MTPauth_ResendCode(
-					MTP_flags(0),
 					MTP_string(phone),
-					MTP_string(phoneHash),
-					MTPstring() // reason
+					MTP_string(phoneHash)
 				)).done([=] {
 					if (boxWeak) {
 						boxWeak->callDone();

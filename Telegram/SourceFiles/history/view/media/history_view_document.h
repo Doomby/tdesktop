@@ -35,10 +35,6 @@ public:
 		not_null<DocumentData*> document);
 	~Document();
 
-	bool hideMessageText() const override {
-		return false;
-	}
-
 	void draw(Painter &p, const PaintContext &context) const override;
 	TextState textState(QPoint point, StateRequest request) const override;
 	void updatePressed(QPoint point) override;
@@ -60,6 +56,7 @@ public:
 		return _data;
 	}
 
+	TextWithEntities getCaption() const override;
 	void hideSpoilers() override;
 	bool needsBubble() const override {
 		return true;
@@ -69,7 +66,7 @@ public:
 	}
 	QMargins bubbleMargins() const override;
 
-	QSize sizeForGroupingOptimal(int maxWidth, bool last) const override;
+	QSize sizeForGroupingOptimal(int maxWidth) const override;
 	QSize sizeForGrouping(int width) const override;
 	void drawGrouped(
 		Painter &p,
@@ -120,13 +117,12 @@ private:
 		LayoutMode mode) const;
 	void ensureDataMediaCreated() const;
 
-	[[nodiscard]] Ui::Text::String createCaption() const;
+	[[nodiscard]] Ui::Text::String createCaption();
 
 	QSize countOptimalSize() override;
 	QSize countCurrentSize(int newWidth) override;
 
-	void refreshCaption(bool last);
-	void createComponents();
+	void createComponents(bool caption);
 	void fillNamedFromData(not_null<HistoryDocumentNamed*> named);
 
 	[[nodiscard]] Ui::BubbleRounding thumbRounding(

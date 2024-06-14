@@ -87,7 +87,7 @@ public:
 		Api::SendOptions options = {}) const;
 
 	void setRecentInlineBotsInRows(int32 bots);
-	void setSendMenuDetails(Fn<SendMenu::Details()> &&callback);
+	void setSendMenuType(Fn<SendMenu::Type()> &&callback);
 	void rowsUpdated();
 
 	rpl::producer<FieldAutocomplete::MentionChosen> mentionChosen() const;
@@ -155,7 +155,7 @@ private:
 	const std::unique_ptr<Ui::PathShiftGradient> _pathGradient;
 	StickerPremiumMark _premiumMark;
 
-	Fn<SendMenu::Details()> _sendMenuDetails;
+	Fn<SendMenu::Type()> _sendMenuType;
 
 	rpl::event_stream<FieldAutocomplete::MentionChosen> _mentionChosen;
 	rpl::event_stream<FieldAutocomplete::HashtagChosen> _hashtagChosen;
@@ -835,9 +835,8 @@ bool FieldAutocomplete::chooseSelected(ChooseMethod method) const {
 	return _inner->chooseSelected(method);
 }
 
-void FieldAutocomplete::setSendMenuDetails(
-		Fn<SendMenu::Details()> &&callback) {
-	_inner->setSendMenuDetails(std::move(callback));
+void FieldAutocomplete::setSendMenuType(Fn<SendMenu::Type()> &&callback) {
+	_inner->setSendMenuType(std::move(callback));
 }
 
 bool FieldAutocomplete::eventFilter(QObject *obj, QEvent *e) {
@@ -891,7 +890,7 @@ FieldAutocomplete::Inner::Inner(
 	_st.pathBg,
 	_st.pathFg,
 	[=] { update(); }))
-, _premiumMark(_session, st::stickersPremiumLock)
+, _premiumMark(_session)
 , _previewTimer([=] { showPreview(); }) {
 	_session->downloaderTaskFinished(
 	) | rpl::start_with_next([=] {
@@ -1365,22 +1364,24 @@ void FieldAutocomplete::Inner::contextMenuEvent(QContextMenuEvent *e) {
 		return;
 	}
 	const auto index = _sel;
-	const auto details = _sendMenuDetails
-		? _sendMenuDetails()
-		: SendMenu::Details();
+	const auto type = _sendMenuType
+		? _sendMenuType()
+		: SendMenu::Type::Disabled;
 	const auto method = FieldAutocomplete::ChooseMethod::ByClick;
 	_menu = base::make_unique_q<Ui::PopupMenu>(
 		this,
 		st::popupMenuWithIcons);
 
-	const auto send = crl::guard(this, [=](Api::SendOptions options) {
+	const auto send = [=](Api::SendOptions options) {
 		chooseAtIndex(method, index, options);
-	});
+	};
 	SendMenu::FillSendMenu(
 		_menu,
-		_show,
-		details,
-		SendMenu::DefaultCallback(_show, send));
+		type,
+		SendMenu::DefaultSilentCallback(send),
+		SendMenu::DefaultScheduleCallback(_show, type, send),
+		SendMenu::DefaultWhenOnlineCallback(send));
+
 	if (!_menu->empty()) {
 		_menu->popup(QCursor::pos());
 	}
@@ -1603,9 +1604,9 @@ void FieldAutocomplete::Inner::showPreview() {
 	}
 }
 
-void FieldAutocomplete::Inner::setSendMenuDetails(
-		Fn<SendMenu::Details()> &&callback) {
-	_sendMenuDetails = std::move(callback);
+void FieldAutocomplete::Inner::setSendMenuType(
+		Fn<SendMenu::Type()> &&callback) {
+	_sendMenuType = std::move(callback);
 }
 
 auto FieldAutocomplete::Inner::mentionChosen() const

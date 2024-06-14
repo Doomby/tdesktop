@@ -69,71 +69,46 @@ bool CanScheduleUntilOnline(not_null<PeerData*> peer) {
 
 void ScheduleBox(
 		not_null<Ui::GenericBox*> box,
-		std::shared_ptr<ChatHelpers::Show> show,
-		const Api::SendOptions &initialOptions,
-		const SendMenu::Details &details,
+		SendMenu::Type type,
 		Fn<void(Api::SendOptions)> done,
 		TimeId time,
 		ScheduleBoxStyleArgs style) {
-	const auto submit = [=](Api::SendOptions options) {
-		if (!options.scheduled) {
+	const auto save = [=](bool silent, TimeId scheduleDate) {
+		if (!scheduleDate) {
 			return;
 		}
+		auto result = Api::SendOptions();
 		// Pro tip: Hold Ctrl key to send a silent scheduled message!
-		if (base::IsCtrlPressed()) {
-			options.silent = true;
-		}
+		result.silent = silent || base::IsCtrlPressed();
+		result.scheduled = scheduleDate;
 		const auto copy = done;
 		box->closeBox();
-		copy(options);
-	};
-	const auto with = [=](TimeId scheduled) {
-		auto result = initialOptions;
-		result.scheduled = scheduled;
-		return result;
+		copy(result);
 	};
 	auto descriptor = Ui::ChooseDateTimeBox(box, {
-		.title = (details.type == SendMenu::Type::Reminder
+		.title = (type == SendMenu::Type::Reminder
 			? tr::lng_remind_title()
 			: tr::lng_schedule_title()),
 		.submit = tr::lng_schedule_button(),
-		.done = [=](TimeId result) { submit(with(result)); },
+		.done = [=](TimeId result) { save(false, result); },
 		.time = time,
 		.style = style.chooseDateTimeArgs,
 	});
 
-	using namespace SendMenu;
-	const auto childType = (details.type == Type::Disabled)
-		? Type::Disabled
-		: Type::SilentOnly;
-	const auto childDetails = Details{
-		.type = childType,
-		.effectAllowed = details.effectAllowed,
-	};
-	const auto sendAction = crl::guard(box, [=](Action action, Details) {
-		Expects(action.type == ActionType::Send);
-
-		auto options = with(descriptor.collect());
-		if (action.options.silent) {
-			options.silent = action.options.silent;
-		}
-		if (action.options.effectId) {
-			options.effectId = action.options.effectId;
-		}
-		submit(options);
-	});
-	SetupMenuAndShortcuts(
+	using T = SendMenu::Type;
+	SendMenu::SetupMenuAndShortcuts(
 		descriptor.submit.data(),
-		show,
-		[=] { return childDetails; },
-		sendAction);
+		[t = type == T::Disabled ? T::Disabled : T::SilentOnly] { return t; },
+		[=] { save(true, descriptor.collect()); },
+		nullptr,
+		nullptr);
 
-	if (details.type == Type::ScheduledToUser) {
+	if (type == SendMenu::Type::ScheduledToUser) {
 		const auto sendUntilOnline = box->addTopButton(*style.topButtonStyle);
 		const auto timestamp = Api::kScheduledUntilOnlineTimestamp;
 		FillSendUntilOnlineMenu(
 			sendUntilOnline.data(),
-			[=] { submit(with(timestamp)); },
+			[=] { save(false, timestamp); },
 			style);
 	}
 }

@@ -192,27 +192,20 @@ void ShowAddParticipantsError(
 			&& channel
 			&& !channel->isMegagroup()
 			&& channel->canAddAdmins()) {
-			const auto makeAdmin = [=](Fn<void()> close) {
+			const auto makeAdmin = [=] {
 				const auto user = forbidden.users.front();
 				const auto weak = std::make_shared<QPointer<EditAdminBox>>();
-				const auto done = [=](auto&&...) {
-					if (const auto strong = weak->data()) {
-						strong->uiShow()->showToast(
-							tr::lng_box_done(tr::now));
-						strong->closeBox();
-					}
-				};
-				const auto fail = [=] {
-					if (const auto strong = weak->data()) {
-						strong->closeBox();
+				const auto close = [=](auto&&...) {
+					if (*weak) {
+						(*weak)->closeBox();
 					}
 				};
 				const auto saveCallback = SaveAdminCallback(
 					show,
 					channel,
 					user,
-					done,
-					fail);
+					close,
+					close);
 				auto box = Box<EditAdminBox>(
 					channel,
 					user,
@@ -221,7 +214,6 @@ void ShowAddParticipantsError(
 				box->setSaveCallback(saveCallback);
 				*weak = box.data();
 				show->showBox(std::move(box));
-				close();
 			};
 			show->showBox(
 				Ui::MakeConfirmBox({

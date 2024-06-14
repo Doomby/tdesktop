@@ -34,8 +34,7 @@ Invoice::Invoice(
 }
 
 void Invoice::fillFromData(not_null<Data::Invoice*> invoice) {
-	const auto isCreditsCurrency = false;
-	if (invoice->photo && !isCreditsCurrency) {
+	if (invoice->photo) {
 		const auto spoiler = false;
 		_attach = std::make_unique<Photo>(
 			_parent,
@@ -65,9 +64,6 @@ void Invoice::fillFromData(not_null<Data::Invoice*> invoice) {
 		0,
 		int(statusText.text.size()) });
 	statusText.text += ' ' + labelText().toUpper();
-	if (isCreditsCurrency) {
-		statusText = {};
-	}
 	_status.setMarkedText(
 		st::defaultTextStyle,
 		statusText,

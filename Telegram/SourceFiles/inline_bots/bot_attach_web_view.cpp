@@ -43,7 +43,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "history/history_item.h"
 #include "payments/payments_checkout_process.h"
-#include "payments/payments_non_panel_process.h"
 #include "storage/storage_account.h"
 #include "boxes/peer_list_controllers.h"
 #include "lang/lang_keys.h"
@@ -604,15 +603,7 @@ void AttachWebView::botHandleInvoice(QString slug) {
 		}
 	};
 	_panel->hideForPayment();
-	Payments::CheckoutProcess::Start(
-		&_bot->session(),
-		slug,
-		reactivate,
-		_context
-			? Payments::ProcessNonPanelPaymentFormFactory(
-				_context->controller.get(),
-				reactivate)
-			: nullptr);
+	Payments::CheckoutProcess::Start(&_bot->session(), slug, reactivate);
 }
 
 void AttachWebView::botHandleMenuButton(Ui::BotWebView::MenuButton button) {
@@ -1712,7 +1703,7 @@ std::unique_ptr<Ui::DropdownMenu> MakeAttachBotsMenu(
 				flag,
 				flag,
 				source,
-				{ sendMenuType });
+				sendMenuType);
 		}, &st::menuIconCreatePoll);
 	}
 	for (const auto &bot : bots->attachBots()) {

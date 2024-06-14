@@ -259,9 +259,9 @@ void PaintRow(
 		not_null<Entry*> entry,
 		VideoUserpic *videoUserpic,
 		PeerData *from,
-		PeerBadge &rowBadge,
+		PeerBadge &fromBadge,
 		Fn<void()> customEmojiRepaint,
-		const Text::String &rowName,
+		const Text::String &fromName,
 		const HiddenSenderInfo *hiddenSenderInfo,
 		HistoryItem *item,
 		const Data::Draft *draft,
@@ -626,10 +626,10 @@ void PaintRow(
 		p.drawTextLeft(rectForName.left(), rectForName.top(), context.width, text);
 	} else if (from) {
 		if ((history || sublist) && !context.search) {
-			const auto badgeWidth = rowBadge.drawGetWidth(
+			const auto badgeWidth = fromBadge.drawGetWidth(
 				p,
 				rectForName,
-				rowName.maxWidth(),
+				fromName.maxWidth(),
 				context.width,
 				{
 					.peer = from,
@@ -663,7 +663,7 @@ void PaintRow(
 			: context.selected
 			? st::dialogsNameFgOver
 			: st::dialogsNameFg);
-		rowName.drawElided(p, rectForName.left(), rectForName.top(), rectForName.width());
+		fromName.drawElided(p, rectForName.left(), rectForName.top(), rectForName.width());
 	} else if (hiddenSenderInfo) {
 		p.setPen(context.active
 			? st::dialogsNameFgActive
@@ -681,7 +681,12 @@ void PaintRow(
 			: (context.selected
 				? st::dialogsNameFgOver
 				: st::dialogsNameFg));
-		rowName.drawElided(p, rectForName.left(), rectForName.top(), rectForName.width());
+		auto text = entry->chatListName(); // TODO feed name with emoji
+		auto textWidth = st::semiboldFont->width(text);
+		if (textWidth > rectForName.width()) {
+			text = st::semiboldFont->elided(text, rectForName.width());
+		}
+		p.drawTextLeft(rectForName.left(), rectForName.top(), context.width, text);
 	}
 }
 

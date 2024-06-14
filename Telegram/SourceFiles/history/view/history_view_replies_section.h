@@ -19,7 +19,7 @@ enum class SendMediaType;
 struct SendingAlbum;
 
 namespace SendMenu {
-struct Details;
+enum class Type;
 } // namespace SendMenu
 
 namespace Api {
@@ -71,7 +71,7 @@ class TranslateBar;
 
 class RepliesWidget final
 	: public Window::SectionWidget
-	, private WindowListDelegate
+	, private ListDelegate
 	, private CornerButtonsDelegate {
 public:
 	RepliesWidget(
@@ -175,7 +175,6 @@ public:
 		Painter &p,
 		const Ui::ChatPaintContext &context) override;
 	QString listElementAuthorRank(not_null<const Element*> view) override;
-	bool listElementHideTopicButton(not_null<const Element*> view) override;
 	History *listTranslateHistory() override;
 	void listAddTranslatedItems(
 		not_null<TranslateTracker*> tracker) override;
@@ -247,10 +246,9 @@ private:
 	void edit(
 		not_null<HistoryItem*> item,
 		Api::SendOptions options,
-		mtpRequestId *const saveEditMsgRequestId,
-		bool spoilered);
+		mtpRequestId *const saveEditMsgRequestId);
 	void chooseAttach(std::optional<bool> overrideSendImagesAsPhotos);
-	[[nodiscard]] SendMenu::Details sendMenuDetails() const;
+	[[nodiscard]] SendMenu::Type sendMenuType() const;
 	[[nodiscard]] FullReplyTo replyTo() const;
 	[[nodiscard]] HistoryItem *lookupRoot() const;
 	[[nodiscard]] Data::ForumTopic *lookupTopic();

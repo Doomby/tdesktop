@@ -27,7 +27,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/round_rect.h"
 #include "ui/text/text_utilities.h"
 #include "ui/power_saving.h"
-#include "data/components/factchecks.h"
 #include "data/components/sponsored_messages.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
@@ -406,6 +405,7 @@ Message::Message(
 	not_null<HistoryItem*> data,
 	Element *replacing)
 : Element(delegate, data, replacing, Flag(0))
+, _invertMedia(data->invertMedia() && !data->emptyText())
 , _hideReply(delegate->elementHideReply(this))
 , _bottomInfo(
 		&data->history()->owner().reactions(),
@@ -423,7 +423,6 @@ Message::Message(
 		: base::flat_map<
 			Data::ReactionId,
 			std::unique_ptr<Ui::ReactionFlyAnimation>>();
-	auto animation = replacing ? replacing->takeEffectAnimation() : nullptr;
 	if (!animations.empty()) {
 		const auto repainter = [=] { repaint(); };
 		for (const auto &[id, animation] : animations) {
@@ -431,10 +430,9 @@ Message::Message(
 		}
 		if (_reactions) {
 			_reactions->continueAnimations(std::move(animations));
+		} else {
+			_bottomInfo.continueReactionAnimations(std::move(animations));
 		}
-	}
-	if (animation) {
-		_bottomInfo.continueEffectAnimation(std::move(animation));
 	}
 	if (data->isSponsored()) {
 		const auto &session = data->history()->session();
@@ -584,8 +582,16 @@ void Message::animateReaction(Ui::ReactionFlyAnimationArgs &&args) {
 		return;
 	}
 
+	const auto animateInBottomInfo = [&](QPoint bottomRight) {
+		_bottomInfo.animateReaction(args.translated(-bottomRight), repainter);
+	};
 	if (bubble) {
+		auto entry = logEntryOriginal();
+
 		// Entry page is always a bubble bottom.
+		auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || (entry/* && entry->isBubbleBottom()*/);
+		auto mediaOnTop = (mediaDisplayed && media->isBubbleTop()) || (entry && entry->isBubbleTop());
+
 		auto inner = g;
 		if (_comments) {
 			inner.setHeight(inner.height() - st::historyCommentsButtonHeight);
@@ -603,51 +609,6 @@ void Message::animateReaction(Ui::ReactionFlyAnimationArgs &&args) {
 			_reactions->animate(args.translated(-reactionsPosition), repainter);
 			return;
 		}
-	}
-}
-
-void Message::animateEffect(Ui::ReactionFlyAnimationArgs &&args) {
-	const auto item = data();
-	const auto media = this->media();
-
-	auto g = countGeometry();
-	if (g.width() < 1 || isHidden()) {
-		return;
-	}
-	const auto repainter = [=] { repaint(); };
-
-	const auto bubble = drawBubble();
-	const auto reactionsInBubble = _reactions && embedReactionsInBubble();
-	const auto mediaDisplayed = media && media->isDisplayed();
-	const auto keyboard = item->inlineReplyKeyboard();
-	auto keyboardHeight = 0;
-	if (keyboard) {
-		keyboardHeight = keyboard->naturalHeight();
-		g.setHeight(g.height() - st::msgBotKbButton.margin - keyboardHeight);
-	}
-
-	const auto animateInBottomInfo = [&](QPoint bottomRight) {
-		_bottomInfo.animateEffect(args.translated(-bottomRight), repainter);
-	};
-	if (bubble) {
-		const auto entry = logEntryOriginal();
-		const auto check = factcheckBlock();
-
-		// Entry page is always a bubble bottom.
-		auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || check || (entry/* && entry->isBubbleBottom()*/);
-		auto mediaOnTop = (mediaDisplayed && media->isBubbleTop()) || (entry && entry->isBubbleTop());
-
-		auto inner = g;
-		if (_comments) {
-			inner.setHeight(inner.height() - st::historyCommentsButtonHeight);
-		}
-		auto trect = inner.marginsRemoved(st::msgPadding);
-		const auto reactionsTop = (reactionsInBubble && !_viewButton)
-			? st::mediaInBubbleSkip
-			: 0;
-		const auto reactionsHeight = reactionsInBubble
-			? (reactionsTop + _reactions->height())
-			: 0;
 		if (_viewButton) {
 			const auto belowInfo = _viewButton->belowMessageInfo();
 			const auto infoHeight = reactionsInBubble
@@ -692,98 +653,9 @@ auto Message::takeReactionAnimations()
 -> base::flat_map<
 		Data::ReactionId,
 		std::unique_ptr<Ui::ReactionFlyAnimation>> {
-	if (_reactions) {
-		return _reactions->takeAnimations();
-	}
-	return {};
-}
-
-auto Message::takeEffectAnimation()
--> std::unique_ptr<Ui::ReactionFlyAnimation> {
-	return _bottomInfo.takeEffectAnimation();
-}
-
-QRect Message::effectIconGeometry() const {
-	const auto item = data();
-	const auto media = this->media();
-
-	auto g = countGeometry();
-	if (g.width() < 1 || isHidden()) {
-		return {};
-	}
-	const auto bubble = drawBubble();
-	const auto reactionsInBubble = _reactions && embedReactionsInBubble();
-	const auto mediaDisplayed = media && media->isDisplayed();
-	const auto keyboard = item->inlineReplyKeyboard();
-	auto keyboardHeight = 0;
-	if (keyboard) {
-		keyboardHeight = keyboard->naturalHeight();
-		g.setHeight(g.height() - st::msgBotKbButton.margin - keyboardHeight);
-	}
-
-	const auto fromBottomInfo = [&](QPoint bottomRight) {
-		const auto size = _bottomInfo.currentSize();
-		return _bottomInfo.effectIconGeometry().translated(
-			bottomRight - QPoint(size.width(), size.height()));
-	};
-	if (bubble) {
-		const auto entry = logEntryOriginal();
-		const auto check = factcheckBlock();
-
-		// Entry page is always a bubble bottom.
-		auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || check || (entry/* && entry->isBubbleBottom()*/);
-		auto mediaOnTop = (mediaDisplayed && media->isBubbleTop()) || (entry && entry->isBubbleTop());
-
-		auto inner = g;
-		if (_comments) {
-			inner.setHeight(inner.height() - st::historyCommentsButtonHeight);
-		}
-		auto trect = inner.marginsRemoved(st::msgPadding);
-		const auto reactionsTop = (reactionsInBubble && !_viewButton)
-			? st::mediaInBubbleSkip
-			: 0;
-		const auto reactionsHeight = reactionsInBubble
-			? (reactionsTop + _reactions->height())
-			: 0;
-		if (_viewButton) {
-			const auto belowInfo = _viewButton->belowMessageInfo();
-			const auto infoHeight = reactionsInBubble
-				? (reactionsHeight + 2 * st::mediaInBubbleSkip)
-				: _bottomInfo.height();
-			const auto heightMargins = QMargins(0, 0, 0, infoHeight);
-			if (belowInfo) {
-				inner -= heightMargins;
-			}
-			trect.setHeight(trect.height() - _viewButton->height());
-			if (reactionsInBubble) {
-				trect.setHeight(trect.height() - st::mediaInBubbleSkip + st::msgPadding.bottom());
-			} else if (mediaDisplayed) {
-				trect.setHeight(trect.height() - st::mediaInBubbleSkip);
-			}
-		}
-		if (mediaOnBottom) {
-			trect.setHeight(trect.height()
-				+ st::msgPadding.bottom()
-				- viewButtonHeight());
-		}
-		if (mediaOnTop) {
-			trect.setY(trect.y() - st::msgPadding.top());
-		}
-		if (mediaDisplayed && mediaOnBottom && media->customInfoLayout()) {
-			auto mediaHeight = media->height();
-			auto mediaLeft = trect.x() - st::msgPadding.left();
-			auto mediaTop = (trect.y() + trect.height() - mediaHeight);
-			return fromBottomInfo(QPoint(mediaLeft, mediaTop) + media->resolveCustomInfoRightBottom());
-		} else {
-			return fromBottomInfo({
-				inner.left() + inner.width() - (st::msgPadding.right() - st::msgDateDelta.x()),
-				inner.top() + inner.height() - (st::msgPadding.bottom() - st::msgDateDelta.y()),
-			});
-		}
-	} else if (mediaDisplayed) {
-		return fromBottomInfo(g.topLeft() + media->resolveCustomInfoRightBottom());
-	}
-	return {};
+	return _reactions
+		? _reactions->takeAnimations()
+		: _bottomInfo.takeReactionAnimations();
 }
 
 QSize Message::performCountOptimalSize() {
@@ -794,16 +666,6 @@ QSize Message::performCountOptimalSize() {
 		AddComponents(Reply::Bit());
 	} else {
 		RemoveComponents(Reply::Bit());
-	}
-
-	const auto factcheck = item->Get<HistoryMessageFactcheck>();
-	if (factcheck && !factcheck->data.text.empty()) {
-		AddComponents(Factcheck::Bit());
-		Get<Factcheck>()->page = history()->session().factchecks().makeMedia(
-			this,
-			factcheck);
-	} else {
-		RemoveComponents(Factcheck::Bit());
 	}
 
 	const auto markup = item->inlineReplyMarkup();
@@ -819,15 +681,6 @@ QSize Message::performCountOptimalSize() {
 	validateInlineKeyboard(markup);
 	updateViewButtonExistence();
 	refreshTopicButton();
-
-	const auto media = this->media();
-	const auto textItem = this->textItem();
-	const auto defaultInvert = media && media->aboveTextByDefault();
-	const auto invertDefault = textItem
-		&& textItem->invertMedia()
-		&& !textItem->emptyText();
-	_invertMedia = invertDefault ? !defaultInvert : defaultInvert;
-
 	updateMediaInBubbleState();
 	if (oldKey != reactionsKey()) {
 		refreshReactions();
@@ -835,6 +688,7 @@ QSize Message::performCountOptimalSize() {
 	refreshRightBadge();
 	refreshInfoSkipBlock();
 
+	const auto media = this->media();
 	const auto botTop = item->isFakeAboutView()
 		? Get<FakeBotAboutTop>()
 		: nullptr;
@@ -859,9 +713,8 @@ QSize Message::performCountOptimalSize() {
 		const auto forwarded = item->Get<HistoryMessageForwarded>();
 		const auto via = item->Get<HistoryMessageVia>();
 		const auto entry = logEntryOriginal();
-		const auto check = factcheckBlock();
 		if (forwarded) {
-			forwarded->create(via, item);
+			forwarded->create(via);
 		}
 
 		auto mediaDisplayed = false;
@@ -869,19 +722,15 @@ QSize Message::performCountOptimalSize() {
 			mediaDisplayed = media->isDisplayed();
 			media->initDimensions();
 		}
-		if (check) {
-			check->initDimensions();
-		}
 		if (entry) {
 			entry->initDimensions();
 		}
 
 		// Entry page is always a bubble bottom.
 		const auto withVisibleText = hasVisibleText();
-		const auto textualWidth = textualMaxWidth();
-		auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || check || (entry/* && entry->isBubbleBottom()*/);
+		auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || (entry/* && entry->isBubbleBottom()*/);
 		auto mediaOnTop = (mediaDisplayed && media->isBubbleTop()) || (entry && entry->isBubbleTop());
-		maxWidth = textualWidth;
+		maxWidth = plainMaxWidth();
 		if (context() == Context::Replies && item->isDiscussionPost()) {
 			maxWidth = std::max(maxWidth, st::msgMaxWidth);
 		}
@@ -920,7 +769,6 @@ QSize Message::performCountOptimalSize() {
 			if (mediaDisplayed) minHeight += st::mediaInBubbleSkip;
 			if (entry) minHeight += st::mediaInBubbleSkip;
 		}
-		if (check) minHeight += st::mediaInBubbleSkip;
 		if (mediaDisplayed) {
 			// Parts don't participate in maxWidth() in case of media message.
 			if (media->enforceBubbleWidth()) {
@@ -932,7 +780,7 @@ QSize Message::performCountOptimalSize() {
 					if (botTop) {
 						minHeight += botTop->height;
 					}
-					if (maxWidth < textualWidth) {
+					if (maxWidth < plainMaxWidth()) {
 						minHeight -= text().minHeight();
 						minHeight += text().countHeight(innerWidth);
 					}
@@ -1004,18 +852,14 @@ QSize Message::performCountOptimalSize() {
 					+ st::msgPadding.right();
 				accumulate_max(maxWidth, replyw);
 			}
-			if (check) {
-				accumulate_max(maxWidth, check->maxWidth());
-				minHeight += check->minHeight();
-			}
 			if (entry) {
 				accumulate_max(maxWidth, entry->maxWidth());
 				minHeight += entry->minHeight();
 			}
-		}
-		if (withVisibleText && botTop) {
-			accumulate_max(maxWidth, botTop->maxWidth);
-			minHeight += botTop->height;
+			if (withVisibleText && botTop) {
+				accumulate_max(maxWidth, botTop->maxWidth);
+				minHeight += botTop->height;
+			}
 		}
 		accumulate_max(maxWidth, minWidthForMedia());
 	} else if (media) {
@@ -1036,8 +880,7 @@ QSize Message::performCountOptimalSize() {
 
 void Message::refreshTopicButton() {
 	const auto item = data();
-	if (isAttachedToPrevious()
-		|| delegate()->elementHideTopicButton(this)) {
+	if (isAttachedToPrevious() || context() != Context::History) {
 		_topicButton = nullptr;
 	} else if (const auto topic = item->topic()) {
 		if (!_topicButton) {
@@ -1095,10 +938,6 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 	const auto item = data();
 	const auto media = this->media();
 
-	if (item->hasUnrequestedFactcheck()) {
-		item->history()->session().factchecks().requestFor(item);
-	}
-
 	const auto stm = context.messageStyle();
 	const auto bubble = drawBubble();
 
@@ -1128,12 +967,11 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 		return;
 	}
 
-	const auto entry = logEntryOriginal();
-	const auto check = factcheckBlock();
+	auto entry = logEntryOriginal();
 	auto mediaDisplayed = media && media->isDisplayed();
 
 	// Entry page is always a bubble bottom.
-	auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || check || (entry/* && entry->isBubbleBottom()*/);
+	auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || (entry/* && entry->isBubbleBottom()*/);
 	auto mediaOnTop = (mediaDisplayed && media->isBubbleTop()) || (entry && entry->isBubbleTop());
 
 	const auto displayInfo = needInfoDisplay();
@@ -1157,9 +995,6 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 		}
 		if (!mediaOnBottom && (!_viewButton || !reactionsInBubble)) {
 			localMediaBottom -= st::msgPadding.bottom();
-		}
-		if (check) {
-			localMediaBottom -= check->height();
 		}
 		if (entry) {
 			localMediaBottom -= entry->height();
@@ -1304,14 +1139,11 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 			paintFromName(p, trect, context);
 			paintTopicButton(p, trect, context);
 			paintForwardedInfo(p, trect, context);
-			paintViaBotIdInfo(p, trect, context);
 			paintReplyInfo(p, trect, context);
+			paintViaBotIdInfo(p, trect, context);
 		}
 		if (entry) {
 			trect.setHeight(trect.height() - entry->height());
-		}
-		if (check) {
-			trect.setHeight(trect.height() - check->height() - st::mediaInBubbleSkip);
 		}
 		if (displayInfo) {
 			trect.setHeight(trect.height()
@@ -1371,19 +1203,6 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 					context.reactionInfo->effectOffset -= QPoint(0, mediaHeight);
 				}
 			}
-		}
-		if (check) {
-			auto checkLeft = inner.left();
-			auto checkTop = trect.y() + trect.height() + st::mediaInBubbleSkip;
-			p.translate(checkLeft, checkTop);
-			auto checkContext = context.translated(checkLeft, -checkTop);
-			checkContext.selection = skipTextSelection(context.selection);
-			if (mediaDisplayed) {
-				checkContext.selection = media->skipSelection(
-					checkContext.selection);
-			}
-			check->draw(p, checkContext);
-			p.translate(-checkLeft, -checkTop);
 		}
 		if (entry) {
 			auto entryLeft = inner.left();
@@ -1951,11 +1770,10 @@ PointState Message::pointState(QPoint point) const {
 		}
 		if (const auto mediaDisplayed = media && media->isDisplayed()) {
 			// Hack for grouped media point state.
-			const auto entry = logEntryOriginal();
-			const auto check = factcheckBlock();
+			auto entry = logEntryOriginal();
 
 			// Entry page is always a bubble bottom.
-			auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || check || (entry/* && entry->isBubbleBottom()*/);
+			auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || (entry/* && entry->isBubbleBottom()*/);
 
 			if (item->repliesAreComments() || item->externalReply()) {
 				g.setHeight(g.height() - st::historyCommentsButtonHeight);
@@ -1987,10 +1805,6 @@ PointState Message::pointState(QPoint point) const {
 			//	if (getStateReplyInfo(point, trect, &result)) return result;
 			//	if (getStateViaBotIdInfo(point, trect, &result)) return result;
 			//}
-			if (check) {
-				auto checkHeight = check->height();
-				trect.setHeight(trect.height() - checkHeight - st::mediaInBubbleSkip);
-			}
 			if (entry) {
 				auto entryHeight = entry->height();
 				trect.setHeight(trect.height() - entryHeight);
@@ -2027,9 +1841,6 @@ void Message::clickHandlerPressedChanged(
 		}
 	}
 	Element::clickHandlerPressedChanged(handler, pressed);
-	if (const auto check = factcheckBlock()) {
-		check->clickHandlerPressedChanged(handler, pressed);
-	}
 	if (!handler) {
 		return;
 	} else if (_rightAction && (handler == _rightAction->link)) {
@@ -2270,7 +2081,6 @@ bool Message::hasFromPhoto() const {
 	case Context::AdminLog:
 		return true;
 	case Context::History:
-	case Context::ChatPreview:
 	case Context::TTLViewer:
 	case Context::Pinned:
 	case Context::Replies:
@@ -2341,11 +2151,10 @@ TextState Message::textState(
 
 	if (bubble) {
 		const auto inBubble = g.contains(point);
-		const auto check = factcheckBlock();
-		const auto entry = logEntryOriginal();
+		auto entry = logEntryOriginal();
 
 		// Entry page is always a bubble bottom.
-		auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || check || (entry/* && entry->isBubbleBottom()*/);
+		auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || (entry/* && entry->isBubbleBottom()*/);
 		auto mediaOnTop = (mediaDisplayed && media->isBubbleTop()) || (entry && entry->isBubbleTop());
 
 		auto inner = g;
@@ -2429,23 +2238,9 @@ TextState Message::textState(
 					+ visibleMediaTextLength();
 			}
 		}
-		if (check) {
-			auto checkHeight = check->height();
-			trect.setHeight(trect.height() - checkHeight - st::mediaInBubbleSkip);
-			auto checkLeft = inner.left();
-			auto checkTop = trect.y() + trect.height() + st::mediaInBubbleSkip;
-			if (point.y() >= checkTop && point.y() < checkTop + checkHeight) {
-				result = check->textState(
-					point - QPoint(checkLeft, checkTop),
-					request);
-				result.symbol += visibleTextLength()
-					+ visibleMediaTextLength();
-			}
-		}
 
 		auto checkBottomInfoState = [&] {
-			if (mediaOnBottom
-				&& (check || entry || media->customInfoLayout())) {
+			if (mediaOnBottom && (entry || media->customInfoLayout())) {
 				return;
 			}
 			const auto bottomInfoResult = bottomInfoTextState(
@@ -2912,7 +2707,6 @@ void Message::updatePressed(QPoint point) {
 TextForMimeData Message::selectedText(TextSelection selection) const {
 	const auto media = this->media();
 	auto logEntryOriginalResult = TextForMimeData();
-	auto factcheckResult = TextForMimeData();
 	const auto mediaDisplayed = (media && media->isDisplayed());
 	const auto mediaBefore = mediaDisplayed && invertMedia();
 	const auto textSelection = mediaBefore
@@ -2927,15 +2721,7 @@ TextForMimeData Message::selectedText(TextSelection selection) const {
 	auto mediaResult = (mediaDisplayed || isHiddenByGroup())
 		? media->selectedText(mediaSelection)
 		: TextForMimeData();
-	if (const auto check = factcheckBlock()) {
-		const auto checkSelection = mediaBefore
-			? skipTextSelection(textSelection)
-			: mediaDisplayed
-			? media->skipSelection(mediaSelection)
-			: skipTextSelection(selection);
-		factcheckResult = check->selectedText(checkSelection);
-	}
-	if (const auto entry = logEntryOriginal()) {
+	if (auto entry = logEntryOriginal()) {
 		const auto originalSelection = mediaBefore
 			? skipTextSelection(textSelection)
 			: mediaDisplayed
@@ -2950,11 +2736,6 @@ TextForMimeData Message::selectedText(TextSelection selection) const {
 		result = std::move(second);
 	} else if (!second.empty()) {
 		result.append(u"\n\n"_q).append(std::move(second));
-	}
-	if (result.empty()) {
-		result = std::move(factcheckResult);
-	} else if (!factcheckResult.empty()) {
-		result.append(u"\n\n"_q).append(std::move(factcheckResult));
 	}
 	if (result.empty()) {
 		result = std::move(logEntryOriginalResult);
@@ -3045,21 +2826,6 @@ TextSelection Message::adjustSelection(
 			? mediaAdjusted
 			: unskipTextSelection(mediaAdjusted);
 	}
-	auto checkResult = TextSelection();
-	if (const auto check = factcheckBlock()) {
-		auto checkSelection = !mediaDisplayed
-			? skipTextSelection(selection)
-			: mediaBefore
-			? skipTextSelection(textSelection)
-			: media->skipSelection(mediaSelection);
-		auto checkAdjusted = useSelection(checkSelection, true)
-			? check->adjustSelection(checkSelection, type)
-			: checkSelection;
-		checkResult = unskipTextSelection(checkAdjusted);
-		if (mediaDisplayed) {
-			checkResult = media->unskipSelection(checkResult);
-		}
-	}
 	auto entryResult = TextSelection();
 	if (const auto entry = logEntryOriginal()) {
 		auto entrySelection = !mediaDisplayed
@@ -3080,12 +2846,6 @@ TextSelection Message::adjustSelection(
 		result = result.empty() ? mediaResult : TextSelection{
 			std::min(result.from, mediaResult.from),
 			std::max(result.to, mediaResult.to),
-		};
-	}
-	if (!checkResult.empty()) {
-		result = result.empty() ? checkResult : TextSelection{
-			std::min(result.from, checkResult.from),
-			std::max(result.to, checkResult.to),
 		};
 	}
 	if (!entryResult.empty()) {
@@ -3228,7 +2988,7 @@ TextState Message::bottomInfoTextState(
 	const auto infoLeft = infoRight - size.width();
 	const auto infoTop = infoBottom - size.height();
 	return _bottomInfo.textState(
-		this,
+		data(),
 		point - QPoint{ infoLeft, infoTop });
 }
 
@@ -3252,8 +3012,6 @@ bool Message::isSignedAuthorElided() const {
 }
 
 bool Message::embedReactionsInBottomInfo() const {
-	return false;
-#if 0 // legacy
 	const auto item = data();
 	const auto user = item->history()->peer->asUser();
 	if (!user
@@ -3286,7 +3044,6 @@ bool Message::embedReactionsInBottomInfo() const {
 		}
 	}
 	return true;
-#endif
 }
 
 bool Message::embedReactionsInBubble() const {
@@ -3435,6 +3192,12 @@ void Message::refreshDataIdHook() {
 	}
 }
 
+int Message::plainMaxWidth() const {
+	return st::msgPadding.left()
+		+ (hasVisibleText() ? text().maxWidth() : 0)
+		+ st::msgPadding.right();
+}
+
 int Message::monospaceMaxWidth() const {
 	return st::msgPadding.left()
 		+ (hasVisibleText() ? text().countMaxMonospaceWidth() : 0)
@@ -3489,13 +3252,6 @@ WebPage *Message::logEntryOriginal() const {
 	return nullptr;
 }
 
-WebPage *Message::factcheckBlock() const {
-	if (const auto entry = Get<Factcheck>()) {
-		return entry->page.get();
-	}
-	return nullptr;
-}
-
 bool Message::toggleSelectionByHandlerClick(
 		const ClickHandlerPtr &handler) const {
 	if (_comments && _comments->link == handler) {
@@ -3525,7 +3281,6 @@ bool Message::hasFromName() const {
 	case Context::AdminLog:
 		return true;
 	case Context::History:
-	case Context::ChatPreview:
 	case Context::TTLViewer:
 	case Context::Pinned:
 	case Context::Replies:
@@ -3625,9 +3380,7 @@ bool Message::drawBubble() const {
 	const auto item = data();
 	if (isHidden()) {
 		return false;
-	} else if (logEntryOriginal()
-		|| factcheckBlock()
-		|| item->isFakeAboutView()) {
+	} else if (logEntryOriginal() || item->isFakeAboutView()) {
 		return true;
 	}
 	const auto media = this->media();
@@ -3648,7 +3401,7 @@ bool Message::unwrapped() const {
 	const auto item = data();
 	if (isHidden()) {
 		return true;
-	} else if (logEntryOriginal() || factcheckBlock()) {
+	} else if (logEntryOriginal()) {
 		return false;
 	}
 	const auto media = this->media();
@@ -4009,22 +3762,8 @@ void Message::updateMediaInBubbleState() {
 			|| Has<Reply>()
 			|| item->Has<HistoryMessageVia>();
 	};
-	const auto entry = logEntryOriginal();
-	const auto check = factcheckBlock();
-	if (check) {
-		mediaHasSomethingBelow = true;
-		mediaHasSomethingAbove = getMediaHasSomethingAbove();
-		auto checkState = (mediaHasSomethingAbove
-			|| hasVisibleText()
-			|| (media && media->isDisplayed()))
-			? MediaInBubbleState::Bottom
-			: MediaInBubbleState::None;
-		check->setInBubbleState(checkState);
-		if (!media) {
-			check->setBubbleRounding(countBubbleRounding());
-			return;
-		}
-	} else if (entry) {
+	auto entry = logEntryOriginal();
+	if (entry) {
 		mediaHasSomethingBelow = true;
 		mediaHasSomethingAbove = getMediaHasSomethingAbove();
 		auto entryState = (mediaHasSomethingAbove
@@ -4049,7 +3788,7 @@ void Message::updateMediaInBubbleState() {
 		return;
 	}
 
-	if (!check && !entry) {
+	if (!entry) {
 		mediaHasSomethingAbove = getMediaHasSomethingAbove();
 	}
 	if (!invertMedia() && hasVisibleText()) {
@@ -4087,7 +3826,7 @@ void Message::fromNameUpdated(int width) const {
 			const auto nameText = [&]() -> const Ui::Text::String * {
 				if (from) {
 					return &_fromName;
-				} else if (const auto info = item->originalHiddenSenderInfo()) {
+				} else if (const auto info= item->originalHiddenSenderInfo()) {
 					return &info->nameText();
 				} else {
 					Unexpected("Corrupted forwarded information in message.");
@@ -4144,16 +3883,16 @@ QRect Message::innerGeometry() const {
 				+ st::topicButtonPadding.bottom()
 				+ st::topicButtonSkip);
 		}
+		// Skip displayForwardedFrom() until there are no animations for it.
+		if (const auto reply = Get<Reply>()) {
+			// See paintReplyInfo().
+			result.translate(0, reply->height());
+		}
 		if (!displayFromName() && !displayForwardedFrom()) {
 			// See paintViaBotIdInfo().
 			if (data()->Has<HistoryMessageVia>()) {
 				result.translate(0, st::msgServiceNameFont->height);
 			}
-		}
-		// Skip displayForwardedFrom() until there are no animations for it.
-		if (const auto reply = Get<Reply>()) {
-			// See paintReplyInfo().
-			result.translate(0, reply->height());
 		}
 	}
 	return result;
@@ -4186,7 +3925,7 @@ QRect Message::countGeometry() const {
 	accumulate_min(contentWidth, maxWidth());
 	accumulate_min(contentWidth, int(_bubbleWidthLimit));
 	if (mediaWidth < contentWidth) {
-		const auto textualWidth = textualMaxWidth();
+		const auto textualWidth = plainMaxWidth();
 		if (mediaWidth < textualWidth
 			&& (!media || !media->enforceBubbleWidth())) {
 			accumulate_min(contentWidth, textualWidth);
@@ -4297,7 +4036,7 @@ int Message::resizeContentGetHeight(int newWidth) {
 	if (mediaDisplayed) {
 		media->resizeGetHeight(contentWidth);
 		if (media->width() < contentWidth) {
-			const auto textualWidth = textualMaxWidth();
+			const auto textualWidth = plainMaxWidth();
 			if (media->width() < textualWidth
 				&& !media->enforceBubbleWidth()) {
 				accumulate_min(contentWidth, textualWidth);
@@ -4316,11 +4055,10 @@ int Message::resizeContentGetHeight(int newWidth) {
 	if (bubble) {
 		auto reply = Get<Reply>();
 		auto via = item->Get<HistoryMessageVia>();
-		const auto check = factcheckBlock();
-		const auto entry = logEntryOriginal();
+		auto entry = logEntryOriginal();
 
 		// Entry page is always a bubble bottom.
-		auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || check || (entry/* && entry->isBubbleBottom()*/);
+		auto mediaOnBottom = (mediaDisplayed && media->isBubbleBottom()) || (entry/* && entry->isBubbleBottom()*/);
 		auto mediaOnTop = (mediaDisplayed && media->isBubbleTop()) || (entry && entry->isBubbleTop());
 
 		if (reactionsInBubble) {
@@ -4329,20 +4067,12 @@ int Message::resizeContentGetHeight(int newWidth) {
 
 		if (contentWidth == maxWidth()) {
 			if (mediaDisplayed) {
-				if (check) {
-					newHeight += check->resizeGetHeight(contentWidth) + st::mediaInBubbleSkip;
-				}
 				if (entry) {
 					newHeight += entry->resizeGetHeight(contentWidth);
 				}
-			} else {
-				if (check) {
-					check->resizeGetHeight(contentWidth);
-				}
-				if (entry) {
-					// In case of text-only message it is counted in minHeight already.
-					entry->resizeGetHeight(contentWidth);
-				}
+			} else if (entry) {
+				// In case of text-only message it is counted in minHeight already.
+				entry->resizeGetHeight(contentWidth);
 			}
 		} else {
 			const auto withVisibleText = hasVisibleText();
@@ -4366,11 +4096,10 @@ int Message::resizeContentGetHeight(int newWidth) {
 			}
 			if (mediaDisplayed) {
 				newHeight += media->height();
-			}
-			if (check) {
-				newHeight += check->resizeGetHeight(contentWidth) + st::mediaInBubbleSkip;
-			}
-			if (entry) {
+				if (entry) {
+					newHeight += entry->resizeGetHeight(contentWidth);
+				}
+			} else if (entry) {
 				newHeight += entry->resizeGetHeight(contentWidth);
 			}
 			if (reactionsInBubble) {
@@ -4455,12 +4184,9 @@ int Message::resizeContentGetHeight(int newWidth) {
 bool Message::needInfoDisplay() const {
 	const auto media = this->media();
 	const auto mediaDisplayed = media ? media->isDisplayed() : false;
-	const auto check = factcheckBlock();
 	const auto entry = logEntryOriginal();
 	return entry
 		? !entry->customInfoLayout()
-		: check
-		? !check->customInfoLayout()
 		: ((mediaDisplayed && media->isBubbleBottom())
 			? !media->customInfoLayout()
 			: true);
@@ -4471,11 +4197,8 @@ bool Message::invertMedia() const {
 }
 
 bool Message::hasVisibleText() const {
-	const auto textItem = this->textItem();
-	if (!textItem) {
-		return false;
-	} else if (textItem->emptyText()) {
-		if (const auto media = textItem->media()) {
+	if (data()->emptyText()) {
+		if (const auto media = data()->media()) {
 			return media->storyExpired();
 		}
 		return false;
@@ -4510,8 +4233,7 @@ void Message::refreshInfoSkipBlock() {
 				return media->storyExpired();
 			}
 			return false;
-		} else if (item->Has<HistoryMessageLogEntryOriginal>()
-			|| factcheckBlock()) {
+		} else if (item->Has<HistoryMessageLogEntryOriginal>()) {
 			return false;
 		} else if (media && media->isDisplayed() && !_invertMedia) {
 			return false;

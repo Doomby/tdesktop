@@ -27,7 +27,7 @@ class SessionController;
 } // namespace Window
 
 namespace SendMenu {
-struct Details;
+enum class Type;
 } // namespace SendMenu
 
 class CreatePollBox : public Ui::BoxContent {
@@ -43,7 +43,7 @@ public:
 		PollData::Flags chosen,
 		PollData::Flags disabled,
 		Api::SendType sendType,
-		SendMenu::Details sendMenuDetails);
+		SendMenu::Type sendMenuType);
 
 	[[nodiscard]] rpl::producer<Result> submitRequests() const;
 	void submitFailed(const QString &error);
@@ -75,7 +75,7 @@ private:
 	const PollData::Flags _chosen = PollData::Flags();
 	const PollData::Flags _disabled = PollData::Flags();
 	const Api::SendType _sendType = Api::SendType();
-	const Fn<SendMenu::Details()> _sendMenuDetails;
+	const SendMenu::Type _sendMenuType;
 	base::unique_qptr<ChatHelpers::TabbedPanel> _emojiPanel;
 	Fn<void()> _setInnerFocus;
 	Fn<rpl::producer<bool>()> _dataIsValidValue;

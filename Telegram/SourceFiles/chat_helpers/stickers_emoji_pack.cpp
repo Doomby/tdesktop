@@ -269,10 +269,10 @@ std::unique_ptr<Lottie::SinglePlayer> EmojiPack::effectPlayer(
 		not_null<DocumentData*> document,
 		QByteArray data,
 		QString filepath,
-		EffectType type) {
+		bool premium) {
 	// Shortened copy from stickers_lottie module.
 	const auto baseKey = document->bigFileBaseCacheKey();
-	const auto tag = uint8(type);
+	const auto tag = uint8(0);
 	const auto keyShift = ((tag << 4) & 0xF0)
 		| (uint8(ChatHelpers::StickerLottieSize::EmojiInteraction) & 0x0F);
 	const auto key = Storage::Cache::Key{
@@ -292,24 +292,19 @@ std::unique_ptr<Lottie::SinglePlayer> EmojiPack::effectPlayer(
 				std::move(data));
 		});
 	};
-	const auto size = (type == EffectType::PremiumSticker)
+	const auto size = premium
 		? HistoryView::Sticker::PremiumEffectSize(document)
-		: (type == EffectType::EmojiInteraction)
-		? HistoryView::Sticker::EmojiEffectSize()
-		: HistoryView::Sticker::MessageEffectSize();
+		: HistoryView::Sticker::EmojiEffectSize();
 	const auto request = Lottie::FrameRequest{
 		size * style::DevicePixelRatio(),
 	};
-	auto &weakProvider = _sharedProviders[{ document, type }];
+	auto &weakProvider = _sharedProviders[document];
 	auto shared = [&] {
 		if (const auto result = weakProvider.lock()) {
 			return result;
 		}
-		const auto count = (type == EffectType::PremiumSticker)
-			? kPremiumCachesCount
-			: kEmojiCachesCount;
 		const auto result = Lottie::SinglePlayer::SharedProvider(
-			count,
+			premium ? kPremiumCachesCount : kEmojiCachesCount,
 			get,
 			put,
 			Lottie::ReadContent(data, filepath),

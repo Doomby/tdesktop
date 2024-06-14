@@ -31,9 +31,6 @@ public:
 
 	void refreshParentId(not_null<HistoryItem*> realParent) override;
 
-	HistoryItem *itemForText() const override;
-	bool hideMessageText() const override;
-
 	void drawHighlight(
 		Painter &p,
 		const PaintContext &context,
@@ -72,6 +69,7 @@ public:
 		const ClickHandlerPtr &p,
 		bool pressed) override;
 
+	TextWithEntities getCaption() const override;
 	void hideSpoilers() override;
 	Storage::SharedMediaTypesMask sharedMediaTypes() const override;
 
@@ -81,12 +79,14 @@ public:
 	HistoryMessageEdited *displayedEditBadge() const override;
 
 	bool skipBubbleTail() const override {
-		return (_mode == Mode::Grid) && isRoundedInBubbleBottom();
+		return (_mode == Mode::Grid)
+			&& isRoundedInBubbleBottom()
+			&& _caption.isEmpty();
 	}
 	void updateNeedBubbleState() override;
 	bool needsBubble() const override;
 	bool customInfoLayout() const override {
-		return (_mode != Mode::Column);
+		return _caption.isEmpty() && (_mode != Mode::Column);
 	}
 	QPoint resolveCustomInfoRightBottom() const override;
 
@@ -96,7 +96,6 @@ public:
 	bool customHighlight() const override {
 		return true;
 	}
-	bool enforceBubbleWidth() const override;
 
 	void stopAnimation() override;
 	void checkAnimation() override;
@@ -144,12 +143,15 @@ private:
 		QPoint point,
 		StateRequest request) const;
 
+	void refreshCaption();
+
 	[[nodiscard]] Ui::BubbleRounding applyRoundingSides(
 		Ui::BubbleRounding already,
 		RectParts sides) const;
 	[[nodiscard]] QMargins groupedPadding() const;
 
-	mutable std::optional<HistoryItem*> _captionItem;
+	Ui::Text::String _caption;
+	HistoryItem *_captionItem = nullptr;
 	std::vector<Part> _parts;
 	Mode _mode = Mode::Grid;
 	bool _needBubble = false;

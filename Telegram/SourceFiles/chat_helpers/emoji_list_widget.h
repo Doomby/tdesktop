@@ -13,8 +13,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/round_rect.h"
 #include "base/timer.h"
 
-class StickerPremiumMark;
-
 namespace style {
 struct EmojiPan;
 } // namespace style
@@ -79,7 +77,6 @@ enum class EmojiListMode {
 	UserpicBuilder,
 	BackgroundEmoji,
 	PeerTitle,
-	MessageEffects,
 };
 
 struct EmojiListDescriptor {
@@ -91,7 +88,6 @@ struct EmojiListDescriptor {
 	Fn<std::unique_ptr<Ui::Text::CustomEmoji>(
 		DocumentId,
 		Fn<void()>)> customRecentFactory;
-	base::flat_set<DocumentId> freeEffects;
 	const style::EmojiPan *st = nullptr;
 	ComposeFeatures features;
 };
@@ -148,10 +144,7 @@ public:
 		RectPart origin);
 
 	base::unique_qptr<Ui::PopupMenu> fillContextMenu(
-		const SendMenu::Details &details) override;
-
-	[[nodiscard]] rpl::producer<std::vector<QString>> searchQueries() const;
-	[[nodiscard]] rpl::producer<int> recentShownCount() const;
+		SendMenu::Type type) override;
 
 protected:
 	void visibleTopBottomUpdated(
@@ -404,13 +397,10 @@ private:
 	int _counts[kEmojiSectionCount];
 	std::vector<RecentOne> _recent;
 	base::flat_set<DocumentId> _recentCustomIds;
-	base::flat_set<DocumentId> _freeEffects;
 	base::flat_set<uint64> _repaintsScheduled;
-	rpl::variable<int> _recentShownCount;
 	std::unique_ptr<Ui::Text::CustomEmojiPaintContext> _emojiPaintContext;
 	bool _recentPainted = false;
 	bool _grabbingChosen = false;
-	bool _paintAsPremium = false;
 	QVector<EmojiPtr> _emoji[kEmojiSectionCount];
 	std::vector<CustomSet> _custom;
 	base::flat_set<DocumentId> _restrictedCustomList;
@@ -424,13 +414,10 @@ private:
 	Ui::RoundRect _overBg;
 	QImage _searchExpandCache;
 
-	std::unique_ptr<StickerPremiumMark> _premiumMark;
-	QImage _premiumMarkFrameCache;
 	mutable std::unique_ptr<Ui::RippleAnimation> _colorAllRipple;
 	bool _colorAllRippleForced = false;
 	rpl::lifetime _colorAllRippleForcedLifetime;
 
-	rpl::event_stream<std::vector<QString>> _searchQueries;
 	std::vector<QString> _nextSearchQuery;
 	std::vector<QString> _searchQuery;
 	base::flat_set<EmojiPtr> _searchEmoji;

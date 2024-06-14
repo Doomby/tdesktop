@@ -29,7 +29,7 @@ struct SendOptions;
 } // namespace Api
 
 namespace SendMenu {
-struct Details;
+enum class Type;
 } // namespace SendMenu
 
 namespace Main {
@@ -157,7 +157,7 @@ public:
 	QPixmap grabForShowAnimation(const Window::SectionSlideParams &params);
 	void checkMainSectionToLayer();
 
-	[[nodiscard]] SendMenu::Details sendMenuDetails() const;
+	[[nodiscard]] SendMenu::Type sendMenuType() const;
 	bool sendExistingDocument(not_null<DocumentData*> document);
 	bool sendExistingDocument(
 		not_null<DocumentData*> document,
@@ -250,7 +250,6 @@ private:
 	void handleAudioUpdate(const Media::Player::TrackState &state);
 	void updateMediaPlaylistPosition(int x);
 	void updateControlsGeometry();
-	void updateMainSectionShown();
 	void updateDialogsWidthAnimated();
 	void updateThirdColumnToCurrentChat(
 		Dialogs::Key key,
@@ -279,7 +278,7 @@ private:
 	void showNewSection(
 		std::shared_ptr<Window::SectionMemento> memento,
 		const SectionShow &params);
-	void destroyThirdSection();
+	void dropMainSection(Window::SectionWidget *widget);
 
 	Window::SectionSlideParams prepareThirdSectionAnimation(Window::SectionWidget *section);
 

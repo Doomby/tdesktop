@@ -54,8 +54,6 @@ enum class WebPageType : uint8 {
 
 	VoiceChat,
 	Livestream,
-
-	Factcheck,
 };
 [[nodiscard]] WebPageType ParseWebPageType(const MTPDwebPage &type);
 [[nodiscard]] bool IgnoreIv(WebPageType type);

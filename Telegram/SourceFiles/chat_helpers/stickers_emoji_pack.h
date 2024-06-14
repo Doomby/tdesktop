@@ -50,12 +50,6 @@ struct LargeEmojiImage {
 	[[nodiscard]] static QSize Size();
 };
 
-enum class EffectType : uint8 {
-	EmojiInteraction,
-	PremiumSticker,
-	MessageEffect,
-};
-
 class EmojiPack final {
 public:
 	using ViewElement = HistoryView::Element;
@@ -101,22 +95,10 @@ public:
 		not_null<DocumentData*> document,
 		QByteArray data,
 		QString filepath,
-		EffectType type);
+		bool premium);
 
 private:
 	class ImageLoader;
-
-	struct ProviderKey {
-		not_null<DocumentData*> document;
-		Stickers::EffectType type = {};
-
-		friend inline auto operator<=>(
-			const ProviderKey &,
-			const ProviderKey &) = default;
-		friend inline bool operator==(
-			const ProviderKey &,
-			const ProviderKey &) = default;
-	};
 
 	void refresh();
 	void refreshDelayed();
@@ -153,7 +135,7 @@ private:
 	mtpRequestId _animationsRequestId = 0;
 
 	base::flat_map<
-		ProviderKey,
+		not_null<DocumentData*>,
 		std::weak_ptr<Lottie::FrameProvider>> _sharedProviders;
 
 	rpl::event_stream<> _refreshed;

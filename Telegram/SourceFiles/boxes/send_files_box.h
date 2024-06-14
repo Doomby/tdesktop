@@ -47,8 +47,7 @@ class SessionController;
 } // namespace Window
 
 namespace SendMenu {
-struct Details;
-struct Action;
+enum class Type;
 } // namespace SendMenu
 
 namespace HistoryView::Controls {
@@ -97,7 +96,7 @@ struct SendFilesBoxDescriptor {
 	SendFilesLimits limits = {};
 	SendFilesCheck check;
 	Api::SendType sendType = {};
-	Fn<SendMenu::Details()> sendMenuDetails = nullptr;
+	SendMenu::Type sendMenuType = {};
 	const style::ComposeControls *stOverride = nullptr;
 	SendFilesConfirmed confirmed;
 	Fn<void()> cancelled;
@@ -116,7 +115,7 @@ public:
 		const TextWithTags &caption,
 		not_null<PeerData*> toPeer,
 		Api::SendType sendType,
-		SendMenu::Details sendMenuDetails);
+		SendMenu::Type sendMenuType);
 	SendFilesBox(QWidget*, SendFilesBoxDescriptor &&descriptor);
 
 	void setConfirmedCallback(SendFilesConfirmed callback) {
@@ -137,9 +136,6 @@ protected:
 	void resizeEvent(QResizeEvent *e) override;
 
 private:
-	using MenuAction = SendMenu::Action;
-	using MenuDetails = SendMenu::Details;
-
 	class Block final {
 	public:
 		Block(
@@ -177,7 +173,7 @@ private:
 
 	void initSendWay();
 	void initPreview();
-	[[nodiscard]] bool hasSendMenu(const MenuDetails &details) const;
+	[[nodiscard]] bool hasSendMenu() const;
 	[[nodiscard]] bool hasSpoilerMenu() const;
 	[[nodiscard]] bool allWithSpoilers();
 	[[nodiscard]] bool checkWithWay(
@@ -206,7 +202,9 @@ private:
 	void generatePreviewFrom(int fromBlock);
 
 	void send(Api::SendOptions options, bool ctrlShiftEnter = false);
-	[[nodiscard]] Fn<void(Api::SendOptions)> sendCallback();
+	void sendSilent();
+	void sendScheduled();
+	void sendWhenOnline();
 	void captionResized();
 	void saveSendWaySettings();
 
@@ -229,11 +227,6 @@ private:
 
 	void checkCharsLimitation();
 
-	[[nodiscard]] Fn<MenuDetails()> prepareSendMenuDetails(
-		const SendFilesBoxDescriptor &descriptor);
-	[[nodiscard]] auto prepareSendMenuCallback()
-		-> Fn<void(MenuAction, MenuDetails)>;
-
 	const std::shared_ptr<ChatHelpers::Show> _show;
 	const style::ComposeControls &_st;
 	const Api::SendType _sendType = Api::SendType();
@@ -245,14 +238,12 @@ private:
 	std::optional<int> _removingIndex;
 
 	SendFilesLimits _limits = {};
-	Fn<MenuDetails()> _sendMenuDetails;
-	Fn<void(MenuAction, MenuDetails)> _sendMenuCallback;
+	SendMenu::Type _sendMenuType = {};
 	PeerData *_captionToPeer = nullptr;
 	SendFilesCheck _check;
 	SendFilesConfirmed _confirmedCallback;
 	Fn<void()> _cancelledCallback;
 	bool _confirmed = false;
-	bool _invertCaption = false;
 
 	object_ptr<Ui::InputField> _caption = { nullptr };
 	TextWithTags _prefilledCaptionText;

@@ -7,8 +7,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
-#include "base/unique_qptr.h"
-
 namespace Data {
 class DocumentMedia;
 } // namespace Data
@@ -25,14 +23,6 @@ namespace Main {
 class Session;
 } // namespace Main
 
-namespace Stickers {
-enum class EffectType : uint8;
-} // namespace Stickers
-
-namespace Ui {
-class RpWidget;
-} // namespace Ui
-
 namespace HistoryView {
 
 class Element;
@@ -40,8 +30,6 @@ class Element;
 class EmojiInteractions final {
 public:
 	EmojiInteractions(
-		not_null<QWidget*> parent,
-		not_null<QWidget*> layerParent,
 		not_null<Main::Session*> session,
 		Fn<int(not_null<const Element*>)> itemTop);
 	~EmojiInteractions();
@@ -55,24 +43,21 @@ public:
 	void cancelPremiumEffect(not_null<const Element*> view);
 	void visibleAreaUpdated(int visibleTop, int visibleBottom);
 
-	void playEffectOnRead(not_null<const Element*> view);
-	void playEffect(not_null<const Element*> view);
-
-	void paint(not_null<QWidget*> layer, QRect clip);
+	void paint(QPainter &p);
+	[[nodiscard]] rpl::producer<QRect> updateRequests() const;
 	[[nodiscard]] rpl::producer<QString> playStarted() const;
 
 private:
 	struct Play {
 		not_null<const Element*> view;
 		std::unique_ptr<Lottie::SinglePlayer> lottie;
-		mutable QRect lastTarget;
 		QPoint shift;
 		QSize inner;
 		QSize outer;
 		int frame = 0;
 		int framesCount = 0;
 		int frameRate = 0;
-		Stickers::EffectType type = {};
+		bool premium = false;
 		bool started = false;
 		bool finished = false;
 	};
@@ -82,16 +67,6 @@ private:
 		std::shared_ptr<Data::DocumentMedia> media;
 		crl::time shouldHaveStartedAt = 0;
 		bool incoming = false;
-	};
-	struct ResolvedEffect {
-		QString emoticon;
-		DocumentData *document = nullptr;
-		QByteArray content;
-		QString filepath;
-
-		explicit operator bool() const {
-			return document && (!content.isEmpty() || !filepath.isEmpty());
-		}
 	};
 
 	[[nodiscard]] QRect computeRect(const Play &play) const;
@@ -108,36 +83,19 @@ private:
 		QByteArray data,
 		QString filepath,
 		bool incoming,
-		Stickers::EffectType type);
+		bool premium);
 	void checkDelayed();
-	void addPendingEffect(not_null<const Element*> view);
 
-	[[nodiscard]] ResolvedEffect resolveEffect(
-		not_null<const Element*> view);
-	void playEffect(
-		not_null<const Element*> view,
-		const ResolvedEffect &resolved);
-	void checkPendingEffects();
-
-	void refreshLayerShift();
-	void refreshLayerGeometryAndUpdate(QRect rect);
-
-	const not_null<QWidget*> _parent;
-	const not_null<QWidget*> _layerParent;
 	const not_null<Main::Session*> _session;
 	const Fn<int(not_null<const Element*>)> _itemTop;
 
-	base::unique_qptr<Ui::RpWidget> _layer;
-	QPoint _layerShift;
 	int _visibleTop = 0;
 	int _visibleBottom = 0;
 
 	std::vector<Play> _plays;
 	std::vector<Delayed> _delayed;
+	rpl::event_stream<QRect> _updateRequests;
 	rpl::event_stream<QString> _playStarted;
-
-	std::vector<base::weak_ptr<const Element>> _pendingEffects;
-	rpl::lifetime _downloadLifetime;
 
 	rpl::lifetime _lifetime;
 

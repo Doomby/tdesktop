@@ -35,10 +35,6 @@ public:
 	void submit() override;
 	rpl::producer<QString> nextButtonText() const override;
 
-	bool hasBack() const override {
-		return true;
-	}
-
 protected:
 	void resizeEvent(QResizeEvent *e) override;
 

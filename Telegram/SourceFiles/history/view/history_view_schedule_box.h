@@ -7,7 +7,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
-#include "api/api_common.h"
 #include "ui/boxes/choose_date_time.h"
 
 namespace style {
@@ -15,12 +14,12 @@ struct IconButton;
 struct PopupMenu;
 } // namespace style
 
-namespace ChatHelpers {
-class Show;
-} // namespace ChatHelpers
+namespace Api {
+struct SendOptions;
+} // namespace Api
 
 namespace SendMenu {
-struct Details;
+enum class Type;
 } // namespace SendMenu
 
 namespace HistoryView {
@@ -37,9 +36,7 @@ struct ScheduleBoxStyleArgs {
 
 void ScheduleBox(
 	not_null<Ui::GenericBox*> box,
-	std::shared_ptr<ChatHelpers::Show> show,
-	const Api::SendOptions &initialOptions,
-	const SendMenu::Details &details,
+	SendMenu::Type type,
 	Fn<void(Api::SendOptions)> done,
 	TimeId time,
 	ScheduleBoxStyleArgs style);
@@ -47,17 +44,13 @@ void ScheduleBox(
 template <typename Guard, typename Submit>
 [[nodiscard]] object_ptr<Ui::GenericBox> PrepareScheduleBox(
 		Guard &&guard,
-		std::shared_ptr<ChatHelpers::Show> show,
-		const SendMenu::Details &details,
+		SendMenu::Type type,
 		Submit &&submit,
-		const Api::SendOptions &initialOptions = {},
 		TimeId scheduleTime = DefaultScheduleTime(),
 		ScheduleBoxStyleArgs style = ScheduleBoxStyleArgs()) {
 	return Box(
 		ScheduleBox,
-		std::move(show),
-		initialOptions,
-		details,
+		type,
 		crl::guard(std::forward<Guard>(guard), std::forward<Submit>(submit)),
 		scheduleTime,
 		std::move(style));

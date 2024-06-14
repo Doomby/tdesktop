@@ -128,7 +128,7 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 	base::flat_set<PeerId> groupEmojiSectionHidden;
 	qint32 appThirdSectionInfoEnabled = 0;
 	qint32 legacySmallDialogsList = 0;
-	float64 appDialogsWidthRatio = app.dialogsWidthRatio(false);
+	float64 appDialogsWidthRatio = app.dialogsWidthRatio();
 	int appThirdColumnWidth = app.thirdColumnWidth();
 	int appThirdSectionExtendedBy = app.thirdSectionExtendedBy();
 	qint32 appSendFilesWay = app.sendFilesWay().serialize();
@@ -535,7 +535,7 @@ void SessionSettings::addFromSerialized(const QByteArray &serialized) {
 		case RectPart::BottomRight: app.setFloatPlayerCorner(uncheckedCorner); break;
 		}
 		app.setThirdSectionInfoEnabled(appThirdSectionInfoEnabled);
-		app.updateDialogsWidthRatio(appDialogsWidthRatio, false);
+		app.setDialogsWidthRatio(appDialogsWidthRatio);
 		app.setThirdColumnWidth(appThirdColumnWidth);
 		app.setThirdSectionExtendedBy(appThirdSectionExtendedBy);
 	}

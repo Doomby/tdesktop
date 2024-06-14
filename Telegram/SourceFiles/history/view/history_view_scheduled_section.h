@@ -17,12 +17,8 @@ class History;
 enum class SendMediaType;
 struct SendingAlbum;
 
-namespace ChatHelpers {
-class Show;
-} // namespace ChatHelpers
-
 namespace SendMenu {
-struct Details;
+enum class Type;
 } // namespace SendMenu
 
 namespace Api {
@@ -56,7 +52,7 @@ class StickerToast;
 
 class ScheduledWidget final
 	: public Window::SectionWidget
-	, private WindowListDelegate
+	, private ListDelegate
 	, private CornerButtonsDelegate {
 public:
 	ScheduledWidget(
@@ -159,7 +155,6 @@ public:
 		Painter &p,
 		const Ui::ChatPaintContext &context) override;
 	QString listElementAuthorRank(not_null<const Element*> view) override;
-	bool listElementHideTopicButton(not_null<const Element*> view) override;
 	History *listTranslateHistory() override;
 	void listAddTranslatedItems(
 		not_null<TranslateTracker*> tracker) override;
@@ -218,11 +213,10 @@ private:
 	void edit(
 		not_null<HistoryItem*> item,
 		Api::SendOptions options,
-		mtpRequestId *const saveEditMsgRequestId,
-		bool spoilered);
+		mtpRequestId *const saveEditMsgRequestId);
 	void highlightSingleNewMessage(const Data::MessagesSlice &slice);
 	void chooseAttach();
-	[[nodiscard]] SendMenu::Details sendMenuDetails() const;
+	[[nodiscard]] SendMenu::Type sendMenuType() const;
 
 	void pushReplyReturn(not_null<HistoryItem*> item);
 	void checkReplyReturns();
@@ -267,7 +261,6 @@ private:
 		not_null<UserData*> bot,
 		Api::SendOptions options);
 
-	const std::shared_ptr<ChatHelpers::Show> _show;
 	const not_null<History*> _history;
 	const Data::ForumTopic *_forumTopic;
 	std::shared_ptr<Ui::ChatTheme> _theme;

@@ -16,7 +16,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_transcribes.h"
 #include "api/api_who_reacted.h"
 #include "api/api_toggling_media.h" // Api::ToggleFavedSticker
-#include "base/qt/qt_key_modifiers.h"
 #include "base/unixtime.h"
 #include "history/view/history_view_list_widget.h"
 #include "history/view/history_view_cursor_state.h"
@@ -39,7 +38,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/text_utilities.h"
 #include "ui/controls/delete_message_context_action.h"
 #include "ui/controls/who_reacted_context_action.h"
-#include "ui/boxes/edit_factcheck_box.h"
 #include "ui/boxes/report_box.h"
 #include "ui/ui_utility.h"
 #include "menu/menu_item_download_files.h"
@@ -54,7 +52,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/sticker_set_box.h"
 #include "boxes/stickers_box.h"
 #include "boxes/translate_box.h"
-#include "data/components/factchecks.h"
 #include "data/data_photo.h"
 #include "data/data_photo_media.h"
 #include "data/data_document.h"
@@ -69,7 +66,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_file_origin.h"
 #include "data/data_message_reactions.h"
 #include "data/stickers/data_custom_emoji.h"
-#include "chat_helpers/message_field.h" // FactcheckFieldIniter.
 #include "core/file_utilities.h"
 #include "core/click_handler_types.h"
 #include "base/platform/base_platform_info.h"
@@ -592,10 +588,8 @@ bool AddRescheduleAction(
 		const auto box = request.navigation->parentController()->show(
 			HistoryView::PrepareScheduleBox(
 				&request.navigation->session(),
-				request.navigation->uiShow(),
-				{ .type = sendMenuType, .effectAllowed = false },
+				sendMenuType,
 				callback,
-				{}, // initial options
 				date));
 
 		owner->itemRemoved(
@@ -638,11 +632,15 @@ bool AddReplyToMessageAction(
 	text.replace('&', u"&&"_q);
 	const auto itemId = item->fullId();
 	menu->addAction(text, [=] {
-		list->replyToMessageRequestNotify({
-			.messageId = itemId,
-			.quote = quote.text,
-			.quoteOffset = quote.offset,
-		}, base::IsCtrlPressed());
+		if (!item) {
+			return;
+		} else {
+			list->replyToMessageRequestNotify({
+				.messageId = itemId,
+				.quote = quote.text,
+				.quoteOffset = quote.offset,
+			});
+		}
 	}, &st::menuIconReply);
 	return true;
 }
@@ -714,31 +712,6 @@ bool AddEditMessageAction(
 		list->editMessageRequestNotify(item->fullId());
 	}, &st::menuIconEdit);
 	return true;
-}
-
-void AddFactcheckAction(
-		not_null<Ui::PopupMenu*> menu,
-		const ContextMenuRequest &request,
-		not_null<ListWidget*> list) {
-	const auto item = request.item;
-	if (!item || !item->history()->session().factchecks().canEdit(item)) {
-		return;
-	}
-	const auto itemId = item->fullId();
-	const auto text = item->factcheckText();
-	const auto session = &item->history()->session();
-	const auto phrase = text.empty()
-		? tr::lng_context_add_factcheck(tr::now)
-		: tr::lng_context_edit_factcheck(tr::now);
-	menu->addAction(phrase, [=] {
-		const auto limit = session->factchecks().lengthLimit();
-		const auto controller = request.navigation->parentController();
-		controller->show(Box(EditFactcheckBox, text, limit, [=](
-				TextWithEntities result) {
-			const auto show = controller->uiShow();
-			session->factchecks().save(itemId, text, result, show);
-		}, FactcheckFieldIniter(controller->uiShow())));
-	}, &st::menuIconFactcheck);
 }
 
 bool AddPinMessageAction(
@@ -1000,7 +973,6 @@ void AddTopMessageActions(
 	AddGoToMessageAction(menu, request, list);
 	AddViewRepliesAction(menu, request, list);
 	AddEditMessageAction(menu, request, list);
-	AddFactcheckAction(menu, request, list);
 	AddPinMessageAction(menu, request, list);
 }
 
@@ -1069,7 +1041,7 @@ void EditTagBox(
 			customId,
 			[=] { field->update(); });
 	} else {
-		owner->reactions().preloadReactionImageFor(id);
+		owner->reactions().preloadImageFor(id);
 	}
 	field->paintRequest() | rpl::start_with_next([=](QRect clip) {
 		auto p = QPainter(field);
@@ -1084,8 +1056,9 @@ void EditTagBox(
 			});
 		} else {
 			if (state->image.isNull()) {
-				state->image = owner->reactions().resolveReactionImageFor(
-					id);
+				state->image = owner->reactions().resolveImageFor(
+					id,
+					::Data::Reactions::ImageSize::InlineList);
 			}
 			if (!state->image.isNull()) {
 				const auto size = st::reactionInlineSize;
@@ -1095,7 +1068,7 @@ void EditTagBox(
 		}
 	}, field->lifetime());
 
-	Ui::AddLengthLimitLabel(field, kTagNameLimit);
+	AddLengthLimitLabel(field, kTagNameLimit);
 
 	const auto save = [=] {
 		const auto text = field->getLastText();
@@ -1853,6 +1826,42 @@ bool ItemHasTtl(HistoryItem *item) {
 	return (item && item->media())
 		? (item->media()->ttlSeconds() > 0)
 		: false;
+}
+
+void AddLengthLimitLabel(not_null<Ui::InputField*> field, int limit) {
+	struct State {
+		rpl::variable<int> length;
+	};
+	const auto state = field->lifetime().make_state<State>();
+	state->length = rpl::single(
+		rpl::empty
+	) | rpl::then(field->changes()) | rpl::map([=] {
+		return int(field->getLastText().size());
+	});
+	auto warningText = state->length.value() | rpl::map([=](int count) {
+		const auto threshold = std::min(limit / 2, 9);
+		const auto left = limit - count;
+		return (left < threshold) ? QString::number(left) : QString();
+	});
+	const auto warning = Ui::CreateChild<Ui::FlatLabel>(
+		field.get(),
+		std::move(warningText),
+		st::editTagLimit);
+	state->length.value() | rpl::map(
+		rpl::mappers::_1 > limit
+	) | rpl::start_with_next([=](bool exceeded) {
+		warning->setTextColorOverride(exceeded
+			? st::attentionButtonFg->c
+			: std::optional<QColor>());
+	}, warning->lifetime());
+	rpl::combine(
+		field->sizeValue(),
+		warning->sizeValue()
+	) | rpl::start_with_next([=] {
+		warning->moveToRight(0, 0);
+	}, warning->lifetime());
+	warning->setAttribute(Qt::WA_TransparentForMouseEvents);
+
 }
 
 } // namespace HistoryView

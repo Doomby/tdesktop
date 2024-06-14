@@ -143,7 +143,6 @@ private:
 	[[nodiscard]] bool progressWithBackground() const;
 	[[nodiscard]] QRect progressRect() const;
 	void setupProgressGeometry();
-	void updateFooterHeight();
 
 	Webview::StorageId _storageId;
 	const not_null<Delegate*> _delegate;
@@ -154,10 +153,9 @@ private:
 	std::unique_ptr<WebviewWithLifetime> _webview;
 	std::unique_ptr<RpWidget> _webviewBottom;
 	rpl::variable<QString> _bottomText;
-	QPointer<RpWidget> _webviewParent;
+	QPointer<QWidget> _webviewParent;
 	std::unique_ptr<Button> _mainButton;
 	mutable crl::time _mainButtonLastClick = 0;
-	rpl::variable<int> _footerHeight = 0;
 	std::unique_ptr<Progress> _progress;
 	rpl::event_stream<> _themeUpdateForced;
 	rpl::lifetime _headerColorLifetime;

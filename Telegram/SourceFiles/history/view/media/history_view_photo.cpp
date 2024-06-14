@@ -73,7 +73,9 @@ Photo::Photo(
 , _storyId(realParent->media()
 	? realParent->media()->storyId()
 	: FullStoryId())
+, _caption(st::minPhotoSize - st::msgPadding.left() - st::msgPadding.right())
 , _spoiler(spoiler ? std::make_unique<MediaSpoiler>() : nullptr) {
+	_caption = createCaption(realParent);
 	create(realParent->fullId());
 }
 
@@ -159,11 +161,8 @@ void Photo::unloadHeavyPart() {
 		_spoiler->animation = nullptr;
 	}
 	_imageCache = QImage();
+	_caption.unloadPersistentAnimation();
 	togglePollingStory(false);
-}
-
-bool Photo::enforceBubbleWidth() const {
-	return true;
 }
 
 void Photo::togglePollingStory(bool enabled) const {
@@ -185,6 +184,15 @@ QSize Photo::countOptimalSize() {
 	if (_serviceWidth > 0) {
 		return { int(_serviceWidth), int(_serviceWidth) };
 	}
+
+	if (_parent->media() != this) {
+		_caption = Ui::Text::String();
+	} else if (_caption.hasSkipBlock()) {
+		_caption.updateSkipBlock(
+			_parent->skipBlockWidth(),
+			_parent->skipBlockHeight());
+	}
+
 	const auto dimensions = photoSize();
 	const auto scaled = CountDesiredMediaSize(dimensions);
 	const auto minWidth = std::clamp(
@@ -196,13 +204,23 @@ QSize Photo::countOptimalSize() {
 	const auto maxActualWidth = qMax(scaled.width(), minWidth);
 	auto maxWidth = qMax(maxActualWidth, scaled.height());
 	auto minHeight = qMax(scaled.height(), st::minPhotoSize);
-	if (_parent->hasBubble()) {
-		const auto captionMaxWidth = _parent->textualMaxWidth();
-		const auto maxWithCaption = qMin(st::msgMaxWidth, captionMaxWidth);
-		maxWidth = qMin(qMax(maxWidth, maxWithCaption), st::msgMaxWidth);
+	if (_parent->hasBubble() && !_caption.isEmpty()) {
+		maxWidth = qMax(
+			maxWidth,
+			(st::msgPadding.left()
+				+ _caption.maxWidth()
+				+ st::msgPadding.right()));
 		minHeight = adjustHeightForLessCrop(
 			dimensions,
 			{ maxWidth, minHeight });
+		if (const auto botTop = _parent->Get<FakeBotAboutTop>()) {
+			accumulate_max(maxWidth, botTop->maxWidth);
+			minHeight += botTop->height;
+		}
+		minHeight += st::mediaCaptionSkip + _caption.minHeight();
+		if (isBubbleBottom()) {
+			minHeight += st::msgPadding.bottom();
+		}
 	}
 	return { maxWidth, minHeight };
 }
@@ -225,20 +243,30 @@ QSize Photo::countCurrentSize(int newWidth) {
 		maxWidth());
 	newWidth = qMax(pix.width(), minWidth);
 	auto newHeight = qMax(pix.height(), st::minPhotoSize);
-	if (_parent->hasBubble()) {
-		auto captionMaxWidth = _parent->textualMaxWidth();
+	auto imageHeight = newHeight;
+	if (_parent->hasBubble() && !_caption.isEmpty()) {
+		auto captionMaxWidth = st::msgPadding.left()
+			+ _caption.maxWidth()
+			+ st::msgPadding.right();
 		const auto botTop = _parent->Get<FakeBotAboutTop>();
 		if (botTop) {
 			accumulate_max(captionMaxWidth, botTop->maxWidth);
 		}
 		const auto maxWithCaption = qMin(st::msgMaxWidth, captionMaxWidth);
 		newWidth = qMin(qMax(newWidth, maxWithCaption), thumbMaxWidth);
-		newHeight = adjustHeightForLessCrop(
+		imageHeight = newHeight = adjustHeightForLessCrop(
 			dimensions,
 			{ newWidth, newHeight });
-	}
-	if (newWidth >= maxWidth()) {
-		newHeight = qMin(newHeight, minHeight());
+		const auto captionw = newWidth
+			- st::msgPadding.left()
+			- st::msgPadding.right();
+		if (botTop) {
+			newHeight += botTop->height;
+		}
+		newHeight += st::mediaCaptionSkip + _caption.countHeight(captionw);
+		if (isBubbleBottom()) {
+			newHeight += st::msgPadding.bottom();
+		}
 	}
 	const auto enlargeInner = st::historyPageEnlargeSize;
 	const auto enlargeOuter = 2 * st::historyPageEnlargeSkip + enlargeInner;
@@ -247,7 +275,7 @@ QSize Photo::countCurrentSize(int newWidth) {
 		&& _parent->data()->media()->webpage()
 		&& _parent->data()->media()->webpage()->suggestEnlargePhoto()
 		&& (newWidth >= enlargeOuter)
-		&& (newHeight >= enlargeOuter);
+		&& (imageHeight >= enlargeOuter);
 	_showEnlarge = showEnlarge ? 1 : 0;
 	return { newWidth, newHeight };
 }
@@ -273,12 +301,15 @@ void Photo::draw(Painter &p, const PaintContext &context) const {
 	_dataMedia->automaticLoad(_realParent->fullId(), _parent->data());
 	const auto st = context.st;
 	const auto sti = context.imageStyle();
+	const auto stm = context.messageStyle();
 	auto loaded = _dataMedia->loaded();
 	auto displayLoading = _data->displayLoading();
 
 	auto inWebPage = (_parent->media() != this);
 	auto paintx = 0, painty = 0, paintw = width(), painth = height();
 	auto bubble = _parent->hasBubble();
+
+	auto captionw = paintw - st::msgPadding.left() - st::msgPadding.right();
 
 	if (displayLoading) {
 		ensureAnimation();
@@ -287,6 +318,7 @@ void Photo::draw(Painter &p, const PaintContext &context) const {
 		}
 	}
 	const auto radial = isRadialAnimation();
+	const auto botTop = _parent->Get<FakeBotAboutTop>();
 
 	auto rthumb = style::rtlrect(paintx, painty, paintw, painth, width());
 	if (_serviceWidth > 0) {
@@ -294,8 +326,19 @@ void Photo::draw(Painter &p, const PaintContext &context) const {
 	} else {
 		const auto rounding = inWebPage
 			? std::optional<Ui::BubbleRounding>()
-			: adjustedBubbleRounding();
-		if (!bubble) {
+			: adjustedBubbleRoundingWithCaption(_caption);
+		if (bubble) {
+			if (!_caption.isEmpty()) {
+				painth -= st::mediaCaptionSkip + _caption.countHeight(captionw);
+				if (botTop) {
+					painth -= botTop->height;
+				}
+				if (isBubbleBottom()) {
+					painth -= st::msgPadding.bottom();
+				}
+				rthumb = style::rtlrect(paintx, painty, paintw, painth, width());
+			}
+		} else {
 			Assert(rounding.has_value());
 			fillImageShadow(p, rthumb, *rounding, context);
 		}
@@ -371,7 +414,35 @@ void Photo::draw(Painter &p, const PaintContext &context) const {
 	}
 
 	// date
-	if (!inWebPage && (!bubble || isBubbleBottom())) {
+	if (!_caption.isEmpty()) {
+		p.setPen(stm->historyTextFg);
+		_parent->prepareCustomEmojiPaint(p, context, _caption);
+		auto top = painty + painth + st::mediaCaptionSkip;
+		if (botTop) {
+			botTop->text.drawLeftElided(
+				p,
+				st::msgPadding.left(),
+				top,
+				captionw,
+				_parent->width());
+			top += botTop->height;
+		}
+		auto highlightRequest = context.computeHighlightCache();
+		_caption.draw(p, {
+			.position = QPoint(st::msgPadding.left(), top),
+			.availableWidth = captionw,
+			.palette = &stm->textPalette,
+			.pre = stm->preCache.get(),
+			.blockquote = context.quoteCache(parent()->contentColorIndex()),
+			.colors = context.st->highlightColors(),
+			.spoiler = Ui::Text::DefaultSpoilerCache(),
+			.now = context.now,
+			.pausedEmoji = context.paused || On(PowerSaving::kEmojiChat),
+			.pausedSpoiler = context.paused || On(PowerSaving::kChatSpoiler),
+			.selection = context.selection,
+			.highlight = highlightRequest ? &*highlightRequest : nullptr,
+		});
+	} else if (!inWebPage) {
 		auto fullRight = paintx + paintw;
 		auto fullBottom = painty + painth;
 		if (needInfoDisplay()) {
@@ -611,6 +682,26 @@ TextState Photo::textState(QPoint point, StateRequest request) const {
 	auto paintx = 0, painty = 0, paintw = width(), painth = height();
 	auto bubble = _parent->hasBubble();
 
+	if (bubble && !_caption.isEmpty()) {
+		const auto captionw = paintw
+			- st::msgPadding.left()
+			- st::msgPadding.right();
+		painth -= _caption.countHeight(captionw);
+		if (isBubbleBottom()) {
+			painth -= st::msgPadding.bottom();
+		}
+		if (QRect(st::msgPadding.left(), painth, captionw, height() - painth).contains(point)) {
+			result = TextState(_parent, _caption.getState(
+				point - QPoint(st::msgPadding.left(), painth),
+				captionw,
+				request.forText()));
+			return result;
+		}
+		if (const auto botTop = _parent->Get<FakeBotAboutTop>()) {
+			painth -= botTop->height;
+		}
+		painth -= st::mediaCaptionSkip;
+	}
 	if (QRect(paintx, painty, paintw, painth).contains(point)) {
 		ensureDataMediaCreated();
 		result.link = (_spoiler && !_spoiler->revealed)
@@ -628,7 +719,7 @@ TextState Photo::textState(QPoint point, StateRequest request) const {
 			result.cursor = CursorState::Enlarge;
 		}
 	}
-	if (_parent->media() == this && (!_parent->hasBubble() || isBubbleBottom())) {
+	if (_caption.isEmpty() && _parent->media() == this) {
 		auto fullRight = paintx + paintw;
 		auto fullBottom = painty + painth;
 		const auto bottomInfoResult = _parent->bottomInfoTextState(
@@ -655,13 +746,13 @@ TextState Photo::textState(QPoint point, StateRequest request) const {
 	return result;
 }
 
-QSize Photo::sizeForGroupingOptimal(int maxWidth, bool last) const {
+QSize Photo::sizeForGroupingOptimal(int maxWidth) const {
 	const auto size = photoSize();
 	return { std::max(size.width(), 1), std::max(size.height(), 1)};
 }
 
 QSize Photo::sizeForGrouping(int width) const {
-	return sizeForGroupingOptimal(width, false);
+	return sizeForGroupingOptimal(width);
 }
 
 void Photo::drawGrouped(
@@ -817,7 +908,6 @@ bool Photo::needInfoDisplay() const {
 	return _parent->data()->isSending()
 		|| _parent->data()->hasFailed()
 		|| _parent->isUnderCursor()
-		|| (_parent->delegate()->elementContext() == Context::ChatPreview)
 		|| _parent->isLastAndSelfMessage();
 }
 
@@ -1004,14 +1094,27 @@ bool Photo::videoAutoplayEnabled() const {
 		_data);
 }
 
+TextForMimeData Photo::selectedText(TextSelection selection) const {
+	return _caption.toTextForMimeData(selection);
+}
+
+SelectedQuote Photo::selectedQuote(TextSelection selection) const {
+	return Element::FindSelectedQuote(_caption, selection, _realParent);
+}
+
+TextSelection Photo::selectionFromQuote(const SelectedQuote &quote) const {
+	return Element::FindSelectionFromQuote(_caption, quote);
+}
+
 void Photo::hideSpoilers() {
+	_caption.setSpoilerRevealed(false, anim::type::instant);
 	if (_spoiler) {
 		_spoiler->revealed = false;
 	}
 }
 
 bool Photo::needsBubble() const {
-	if (_storyId) {
+	if (_storyId || !_caption.isEmpty()) {
 		return true;
 	}
 	const auto item = _parent->data();
@@ -1019,7 +1122,6 @@ bool Photo::needsBubble() const {
 		&& (item->repliesAreComments()
 			|| item->externalReply()
 			|| item->viaBot()
-			|| !item->emptyText()
 			|| _parent->displayReply()
 			|| _parent->displayForwardedFrom()
 			|| _parent->displayFromName()
@@ -1035,6 +1137,13 @@ QPoint Photo::resolveCustomInfoRightBottom() const {
 bool Photo::isReadyForOpen() const {
 	ensureDataMediaCreated();
 	return _dataMedia->loaded();
+}
+
+void Photo::parentTextUpdated() {
+	_caption = (_parent->media() == this)
+		? createCaption(_parent->data())
+		: Ui::Text::String();
+	history()->owner().requestViewResize(_parent);
 }
 
 void Photo::showPhoto(FullMsgId id) {

@@ -383,7 +383,7 @@ void Application::run() {
 	}
 
 	SetCrashAnnotationsGL();
-	if (Ui::GL::LastCrashCheckFailed()) {
+	if (!Platform::IsMac() && Ui::GL::LastCrashCheckFailed()) {
 		showOpenGLCrashNotification();
 	}
 
@@ -427,12 +427,14 @@ void Application::checkWindowAccount(not_null<Window::Controller*> window) {
 
 void Application::showOpenGLCrashNotification() {
 	const auto enable = [=] {
+		Ui::GL::ForceDisable(false);
 		Ui::GL::CrashCheckFinish();
 		settings().setDisableOpenGL(false);
 		Local::writeSettings();
 		Restart();
 	};
 	const auto keepDisabled = [=](Fn<void()> close) {
+		Ui::GL::ForceDisable(true);
 		Ui::GL::CrashCheckFinish();
 		settings().setDisableOpenGL(true);
 		Local::writeSettings();
@@ -790,7 +792,6 @@ void Application::badMtprotoConfigurationError() {
 }
 
 void Application::startLocalStorage() {
-	Ui::GL::DetectLastCheckCrash();
 	Local::start();
 	_saveSettingsTimer.emplace([=] { saveSettings(); });
 	settings().saveDelayedRequests() | rpl::start_with_next([=] {

@@ -21,7 +21,6 @@ struct MessageToEdit {
 	FullMsgId fullId;
 	Api::SendOptions options;
 	TextWithTags textWithTags;
-	bool spoilered = false;
 };
 struct VoiceToSend {
 	QByteArray bytes;

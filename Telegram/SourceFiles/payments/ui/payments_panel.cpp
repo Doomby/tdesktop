@@ -70,8 +70,8 @@ Panel::Progress::Progress(QWidget *parent, Fn<QRect()> rect)
 Panel::Panel(not_null<PanelDelegate*> delegate)
 : _delegate(delegate)
 , _widget(std::make_unique<SeparatePanel>()) {
-	_widget->setWindowFlag(Qt::WindowStaysOnTopHint, false);
 	_widget->setInnerSize(st::paymentsPanelSize);
+	_widget->setWindowFlag(Qt::WindowStaysOnTopHint, false);
 
 	_widget->closeRequests(
 	) | rpl::start_with_next([=] {
@@ -534,15 +534,12 @@ bool Panel::createWebview(const Webview::ThemeParams &params) {
 	const auto bottom = _webviewBottom.get();
 	bottom->show();
 
-	rpl::combine(
-		container->geometryValue() | rpl::map([=] {
-			return _widget->innerGeometry();
-		}),
-		bottom->heightValue()
-	) | rpl::start_with_next([=](QRect inner, int height) {
+	bottom->heightValue(
+	) | rpl::start_with_next([=](int height) {
+		const auto inner = _widget->innerGeometry();
 		bottom->move(inner.x(), inner.y() + inner.height() - height);
+		container->resize(inner.width(), inner.height() - height);
 		bottom->resizeToWidth(inner.width());
-		_footerHeight = bottom->height();
 	}, bottom->lifetime());
 	container->show();
 
@@ -587,12 +584,10 @@ bool Panel::createWebview(const Webview::ThemeParams &params) {
 		});
 	});
 
-	rpl::combine(
-		container->geometryValue(),
-		_footerHeight.value()
-	) | rpl::start_with_next([=](QRect geometry, int footer) {
-		if (const auto view = raw->widget()) {
-			view->setGeometry(geometry.marginsRemoved({ 0, 0, 0, footer }));
+	container->geometryValue(
+	) | rpl::start_with_next([=](QRect geometry) {
+		if (raw->widget()) {
+			raw->widget()->setGeometry(geometry);
 		}
 	}, _webview->lifetime);
 

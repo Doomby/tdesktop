@@ -94,8 +94,7 @@ public:
 
 	[[nodiscard]] QString peerUserpicEmojiData(
 		not_null<PeerData*> peer,
-		QMargins padding = {},
-		bool respectSavedRepliesEtc = false);
+		QMargins padding = {});
 
 	[[nodiscard]] uint64 coloredSetId() const;
 

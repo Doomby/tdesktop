@@ -72,7 +72,7 @@ using namespace HistoryView;
 
 class ShortcutMessages
 	: public AbstractSection
-	, private WindowListDelegate
+	, private ListDelegate
 	, private CornerButtonsDelegate {
 public:
 	ShortcutMessages(
@@ -161,11 +161,9 @@ private:
 		Painter &p,
 		const Ui::ChatPaintContext &context) override;
 	QString listElementAuthorRank(not_null<const Element*> view) override;
-	bool listElementHideTopicButton(not_null<const Element*> view) override;
 	History *listTranslateHistory() override;
 	void listAddTranslatedItems(
 		not_null<TranslateTracker*> tracker) override;
-	bool listIgnorePaintEvent(QWidget *w, QPaintEvent *e) override;
 
 	// CornerButtonsDelegate delegate.
 	void cornerButtonsShowAtPosition(
@@ -240,9 +238,9 @@ private:
 	void edit(
 		not_null<HistoryItem*> item,
 		Api::SendOptions options,
-		mtpRequestId *const saveEditMsgRequestId,
-		bool spoilered);
+		mtpRequestId *const saveEditMsgRequestId);
 	void chooseAttach(std::optional<bool> overrideSendImagesAsPhotos);
+	[[nodiscard]] SendMenu::Type sendMenuType() const;
 	[[nodiscard]] FullReplyTo replyTo() const;
 	void doSetInnerFocus();
 	void showAtPosition(
@@ -331,7 +329,6 @@ ShortcutMessages::ShortcutMessages(
 	rpl::producer<Container> containerValue,
 	BusinessShortcutId shortcutId)
 : AbstractSection(parent)
-, WindowListDelegate(controller)
 , _controller(controller)
 , _session(&controller->session())
 , _scroll(scroll)
@@ -372,7 +369,7 @@ ShortcutMessages::ShortcutMessages(
 
 	_inner = Ui::CreateChild<ListWidget>(
 		this,
-		&controller->session(),
+		controller,
 		static_cast<ListDelegate*>(this));
 	_inner->overrideIsChatWide(false);
 
@@ -676,8 +673,7 @@ void ShortcutMessages::setupComposeControls() {
 	) | rpl::start_with_next([=](auto data) {
 		if (const auto item = _session->data().message(data.fullId)) {
 			if (item->isBusinessShortcut()) {
-				const auto spoiler = data.spoilered;
-				edit(item, data.options, saveEditMsgRequestId, spoiler);
+				edit(item, data.options, saveEditMsgRequestId);
 			}
 		}
 	}, lifetime());
@@ -792,7 +788,7 @@ QPointer<Ui::RpWidget> ShortcutMessages::createPinnedToBottom(
 				listShowPremiumToast(emoji);
 			},
 			.mode = HistoryView::ComposeControlsMode::Normal,
-			.sendMenuDetails = [] { return SendMenu::Details(); },
+			.sendMenuType = SendMenu::Type::Disabled,
 			.regularWindow = _controller,
 			.stickerOrEmojiChosen = _controller->stickerOrEmojiChosen(),
 			.customPlaceholder = std::move(placeholder),
@@ -1047,21 +1043,12 @@ QString ShortcutMessages::listElementAuthorRank(
 	return {};
 }
 
-bool ShortcutMessages::listElementHideTopicButton(
-		not_null<const Element*> view) {
-	return true;
-}
-
 History *ShortcutMessages::listTranslateHistory() {
 	return nullptr;
 }
 
 void ShortcutMessages::listAddTranslatedItems(
 	not_null<TranslateTracker*> tracker) {
-}
-
-bool ShortcutMessages::listIgnorePaintEvent(QWidget *w, QPaintEvent *e) {
-	return false;
 }
 
 void ShortcutMessages::cornerButtonsShowAtPosition(
@@ -1226,8 +1213,7 @@ void ShortcutMessages::send(Api::SendOptions options) {
 void ShortcutMessages::edit(
 		not_null<HistoryItem*> item,
 		Api::SendOptions options,
-		mtpRequestId *const saveEditMsgRequestId,
-		bool spoilered) {
+		mtpRequestId *const saveEditMsgRequestId) {
 	if (*saveEditMsgRequestId) {
 		return;
 	}
@@ -1295,8 +1281,7 @@ void ShortcutMessages::edit(
 		webpage,
 		options,
 		crl::guard(this, done),
-		crl::guard(this, fail),
-		spoilered);
+		crl::guard(this, fail));
 
 	_composeControls->hidePanelsAnimated();
 	doSetInnerFocus();
@@ -1351,7 +1336,7 @@ bool ShortcutMessages::confirmSendingFiles(
 		_composeControls->getTextWithAppliedMarkdown(),
 		_history->peer,
 		Api::SendType::Normal,
-		SendMenu::Details());
+		SendMenu::Type::Disabled);
 
 	box->setConfirmedCallback(crl::guard(this, [=](
 			Ui::PreparedList &&list,
@@ -1548,6 +1533,12 @@ void ShortcutMessages::sendInlineResult(
 		return;
 	}
 	sendInlineResult(result, bot, {}, std::nullopt);
+	//const auto callback = [=](Api::SendOptions options) {
+	//	sendInlineResult(result, bot, options);
+	//};
+	//Ui::show(
+	//	PrepareScheduleBox(this, sendMenuType(), callback),
+	//	Ui::LayerOption::KeepOther);
 }
 
 void ShortcutMessages::sendInlineResult(

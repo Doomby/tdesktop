@@ -255,10 +255,7 @@ void Sandbox::setupScreenScale() {
 Sandbox::~Sandbox() = default;
 
 bool Sandbox::event(QEvent *e) {
-	if (e->type() == QEvent::Quit) {
-		if (Quitting()) {
-			return QCoreApplication::event(e);
-		}
+	if (e->type() == QEvent::Quit && !Quitting()) {
 		Quit(QuitReason::QtQuitEvent);
 		e->ignore();
 		return false;

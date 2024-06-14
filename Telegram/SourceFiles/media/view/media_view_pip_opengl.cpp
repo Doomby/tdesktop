@@ -427,7 +427,6 @@ void Pip::RendererGL::paintTransformedContent(
 		(geometry.outer.height() - geometry.inner.y()) * yscale,
 	};
 
-	_contentBuffer->bind();
 	_contentBuffer->write(0, coords, sizeof(coords));
 
 	const auto rgbaFrame = _chromaSize.isEmpty();
@@ -589,7 +588,6 @@ void Pip::RendererGL::paintButton(
 		iconOverRect.texture.right(), iconOverRect.texture.top(),
 		iconOverRect.texture.left(), iconOverRect.texture.top(),
 	};
-	_contentBuffer->bind();
 	_contentBuffer->write(
 		offset * 4 * sizeof(GLfloat),
 		coords,
@@ -743,7 +741,6 @@ void Pip::RendererGL::paintUsingRaster(
 		geometry.left(), geometry.bottom(),
 		textured.texture.left(), textured.texture.top(),
 	};
-	_contentBuffer->bind();
 	_contentBuffer->write(
 		bufferOffset * 4 * sizeof(GLfloat),
 		coords,

@@ -17,14 +17,11 @@ namespace Premium {
 class ColoredMiniStars final {
 public:
 	// optimizeUpdate may cause paint glitch.
-	ColoredMiniStars(
-		not_null<Ui::RpWidget*> parent,
-		bool optimizeUpdate,
-		MiniStars::Type type = MiniStars::Type::MonoStars);
+	ColoredMiniStars(not_null<Ui::RpWidget*> parent, bool optimizeUpdate);
 
 	void setSize(const QSize &size);
 	void setPosition(QPoint position);
-	void setColorOverride(std::optional<QGradientStops> stops);
+	void setColorOverride(std::optional<QColor> color);
 	void setCenter(const QRect &rect);
 	void paint(QPainter &p);
 
@@ -37,7 +34,7 @@ private:
 	QImage _mask;
 	QSize _size;
 	QPoint _position;
-	std::optional<QGradientStops> _stopsOverride;
+	std::optional<QColor> _colorOverride;
 
 };
 

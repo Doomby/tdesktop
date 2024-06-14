@@ -667,10 +667,8 @@ void Reactions::Panel::create() {
 		TextWithEntities{ (mode == Mode::Message
 			? tr::lng_stories_reaction_as_message(tr::now)
 			: QString()) },
-		[=](bool fast) { hide(mode); },
-		nullptr, // iconFactory
-		nullptr, // paused
-		true);
+		_controller->cachedReactionIconFactory().createMethod(),
+		[=](bool fast) { hide(mode); });
 
 	_selector->chosen(
 	) | rpl::start_with_next([=](
@@ -869,7 +867,8 @@ auto Reactions::attachToMenu(
 		st::storiesReactionsPan,
 		show,
 		LookupPossibleReactions(&show->session()),
-		TextWithEntities());
+		TextWithEntities(),
+		_controller->cachedReactionIconFactory().createMethod());
 	if (!result) {
 		return result.error();
 	}

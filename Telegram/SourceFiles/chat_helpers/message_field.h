@@ -77,9 +77,6 @@ void InitSpellchecker(
 	not_null<Ui::InputField*> field,
 	bool skipDictionariesManager = false);
 
-[[nodiscard]] Fn<void(not_null<Ui::InputField*>)> FactcheckFieldIniter(
-	std::shared_ptr<Main::SessionShow> show);
-
 bool HasSendText(not_null<const Ui::InputField*> field);
 
 void InitMessageFieldFade(

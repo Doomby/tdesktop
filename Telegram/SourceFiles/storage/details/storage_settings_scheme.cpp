@@ -400,7 +400,7 @@ bool ReadSetting(
 		stream >> v;
 		if (!CheckStreamStatus(stream)) return false;
 
-		Core::App().settings().updateDialogsWidthRatio(v / 1000000., false);
+		Core::App().settings().setDialogsWidthRatio(v / 1000000.);
 		context.legacyRead = true;
 	} break;
 

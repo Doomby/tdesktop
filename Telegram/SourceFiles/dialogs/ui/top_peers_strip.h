@@ -50,8 +50,6 @@ public:
 	[[nodiscard]] bool empty() const;
 	[[nodiscard]] rpl::producer<bool> emptyValue() const;
 	[[nodiscard]] rpl::producer<uint64> clicks() const;
-	[[nodiscard]] rpl::producer<uint64> pressed() const;
-	[[nodiscard]] rpl::producer<> pressCancelled() const;
 	[[nodiscard]] auto showMenuRequests() const
 		-> rpl::producer<ShowTopPeerMenuRequest>;
 	[[nodiscard]] auto scrollToRequests() const
@@ -63,10 +61,6 @@ public:
 	bool selectByKeyboard(Qt::Key direction);
 	void deselectByKeyboard();
 	bool chooseRow();
-	void pressLeftToContextMenu(bool shown);
-
-	uint64 updateFromParentDrag(QPoint globalPosition);
-	void dragLeft();
 
 	[[nodiscard]] auto verticalScrollEvents() const
 		-> rpl::producer<not_null<QWheelEvent*>>;
@@ -98,14 +92,11 @@ private:
 	void subscribeUserpic(Entry &entry);
 	void unsubscribeUserpics(bool all = false);
 	void paintUserpic(Painter &p, int x, int y, int index, bool selected);
-	void clearSelection();
-	void selectByMouse(QPoint globalPosition);
 
 	[[nodiscard]] QRect outer() const;
 	[[nodiscard]] QRect innerRounded() const;
 	[[nodiscard]] int scrollLeft() const;
 	[[nodiscard]] Layout currentLayout() const;
-	int clearPressed();
 	void apply(const TopPeersList &list);
 	void apply(Entry &entry, const TopPeersEntry &data);
 
@@ -118,8 +109,6 @@ private:
 	rpl::variable<Ui::LinkButton*> _toggleExpanded = nullptr;
 
 	rpl::event_stream<uint64> _clicks;
-	rpl::event_stream<uint64> _presses;
-	rpl::event_stream<> _pressCancelled;
 	rpl::event_stream<ShowTopPeerMenuRequest> _showMenuRequests;
 	rpl::event_stream<not_null<QWheelEvent*>> _verticalScrollEvents;
 
@@ -133,7 +122,6 @@ private:
 
 	int _selected = -1;
 	int _pressed = -1;
-	int _contexted = -1;
 	bool _selectionByKeyboard = false;
 	bool _hiddenLocally = false;
 

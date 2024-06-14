@@ -198,9 +198,7 @@ AdminLog::OwnedItem GenerateForwardedItem(
 		MTPMessageReactions(),
 		MTPVector<MTPRestrictionReason>(),
 		MTPint(), // ttl_period
-		MTPint(), // quick_reply_shortcut_id
-		MTPlong(), // effect
-		MTPFactCheck()
+		MTPint() // quick_reply_shortcut_id
 	).match([&](const MTPDmessage &data) {
 		return history->makeMessage(
 			history->nextNonHistoryEntryId(),

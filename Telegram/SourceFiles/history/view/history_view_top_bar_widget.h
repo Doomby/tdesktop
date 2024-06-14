@@ -88,9 +88,8 @@ public:
 	[[nodiscard]] rpl::producer<> searchSubmitted() const;
 	[[nodiscard]] rpl::producer<QString> searchQuery() const;
 	[[nodiscard]] QString searchQueryCurrent() const;
-	[[nodiscard]] int searchQueryCursorPosition() const;
 	void searchClear();
-	void searchSetText(const QString &query, int cursorPosition = -1);
+	void searchSetText(const QString &query);
 
 	[[nodiscard]] rpl::producer<> forwardSelectionRequest() const {
 		return _forwardSelection.events();

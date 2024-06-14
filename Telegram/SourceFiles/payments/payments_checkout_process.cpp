@@ -64,9 +64,7 @@ base::flat_map<not_null<Main::Session*>, SessionProcesses> Processes;
 void CheckoutProcess::Start(
 		not_null<const HistoryItem*> item,
 		Mode mode,
-		Fn<void(CheckoutResult)> reactivate,
-		Fn<void(NonPanelPaymentForm)> nonPanelPaymentFormProcess) {
-	const auto hasNonPanelPaymentFormProcess = !!nonPanelPaymentFormProcess;
+		Fn<void(CheckoutResult)> reactivate) {
 	auto &processes = LookupSessionProcesses(&item->history()->session());
 	const auto media = item->media();
 	const auto invoice = media ? media->invoice() : nullptr;
@@ -85,11 +83,7 @@ void CheckoutProcess::Start(
 	const auto i = processes.byItem.find(id);
 	if (i != end(processes.byItem)) {
 		i->second->setReactivateCallback(std::move(reactivate));
-		i->second->setNonPanelPaymentFormProcess(
-			std::move(nonPanelPaymentFormProcess));
-		if (!hasNonPanelPaymentFormProcess) {
-			i->second->requestActivate();
-		}
+		i->second->requestActivate();
 		return;
 	}
 	const auto j = processes.byItem.emplace(
@@ -98,28 +92,19 @@ void CheckoutProcess::Start(
 			InvoiceId{ InvoiceMessage{ item->history()->peer, id.msg } },
 			mode,
 			std::move(reactivate),
-			std::move(nonPanelPaymentFormProcess),
 			PrivateTag{})).first;
-	if (!hasNonPanelPaymentFormProcess) {
-		j->second->requestActivate();
-	}
+	j->second->requestActivate();
 }
 
 void CheckoutProcess::Start(
 		not_null<Main::Session*> session,
 		const QString &slug,
-		Fn<void(CheckoutResult)> reactivate,
-		Fn<void(NonPanelPaymentForm)> nonPanelPaymentFormProcess) {
-	const auto hasNonPanelPaymentFormProcess = !!nonPanelPaymentFormProcess;
+		Fn<void(CheckoutResult)> reactivate) {
 	auto &processes = LookupSessionProcesses(session);
 	const auto i = processes.bySlug.find(slug);
 	if (i != end(processes.bySlug)) {
 		i->second->setReactivateCallback(std::move(reactivate));
-		i->second->setNonPanelPaymentFormProcess(
-			std::move(nonPanelPaymentFormProcess));
-		if (!hasNonPanelPaymentFormProcess) {
-			i->second->requestActivate();
-		}
+		i->second->requestActivate();
 		return;
 	}
 	const auto j = processes.bySlug.emplace(
@@ -128,11 +113,8 @@ void CheckoutProcess::Start(
 			InvoiceId{ InvoiceSlug{ session, slug } },
 			Mode::Payment,
 			std::move(reactivate),
-			std::move(nonPanelPaymentFormProcess),
 			PrivateTag{})).first;
-	if (!hasNonPanelPaymentFormProcess) {
-		j->second->requestActivate();
-	}
+	j->second->requestActivate();
 }
 
 void CheckoutProcess::Start(
@@ -153,30 +135,6 @@ void CheckoutProcess::Start(
 			std::move(id),
 			Mode::Payment,
 			std::move(reactivate),
-			nullptr,
-			PrivateTag{})).first;
-	j->second->requestActivate();
-}
-
-void CheckoutProcess::Start(
-		InvoiceCredits creditsInvoice,
-		Fn<void(CheckoutResult)> reactivate) {
-	const auto randomId = creditsInvoice.randomId;
-	auto id = InvoiceId{ std::move(creditsInvoice) };
-	auto &processes = LookupSessionProcesses(SessionFromId(id));
-	const auto i = processes.byRandomId.find(randomId);
-	if (i != end(processes.byRandomId)) {
-		i->second->setReactivateCallback(std::move(reactivate));
-		i->second->requestActivate();
-		return;
-	}
-	const auto j = processes.byRandomId.emplace(
-		randomId,
-		std::make_unique<CheckoutProcess>(
-			std::move(id),
-			Mode::Payment,
-			std::move(reactivate),
-			nullptr,
 			PrivateTag{})).first;
 	j->second->requestActivate();
 }
@@ -300,13 +258,11 @@ CheckoutProcess::CheckoutProcess(
 	InvoiceId id,
 	Mode mode,
 	Fn<void(CheckoutResult)> reactivate,
-	Fn<void(NonPanelPaymentForm)> nonPanelPaymentFormProcess,
 	PrivateTag)
 : _session(SessionFromId(id))
 , _form(std::make_unique<Form>(id, (mode == Mode::Receipt)))
 , _panel(std::make_unique<Ui::Panel>(panelDelegate()))
-, _reactivate(std::move(reactivate))
-, _nonPanelPaymentFormProcess(std::move(nonPanelPaymentFormProcess)) {
+, _reactivate(std::move(reactivate)) {
 	_form->updates(
 	) | rpl::start_with_next([=](const FormUpdate &update) {
 		handleFormUpdate(update);
@@ -321,9 +277,7 @@ CheckoutProcess::CheckoutProcess(
 	) | rpl::start_with_next([=] {
 		panelCancelEdit();
 	}, _panel->lifetime());
-	if (!_nonPanelPaymentFormProcess) {
-		showForm();
-	}
+	showForm();
 	_panel->toggleProgress(true);
 
 	if (mode == Mode::Payment) {
@@ -340,11 +294,6 @@ CheckoutProcess::~CheckoutProcess() {
 void CheckoutProcess::setReactivateCallback(
 		Fn<void(CheckoutResult)> reactivate) {
 	_reactivate = std::move(reactivate);
-}
-
-void CheckoutProcess::setNonPanelPaymentFormProcess(
-		Fn<void(NonPanelPaymentForm)> callback) {
-	_nonPanelPaymentFormProcess = std::move(callback);
 }
 
 void CheckoutProcess::requestActivate() {
@@ -409,18 +358,6 @@ void CheckoutProcess::handleFormUpdate(const FormUpdate &update) {
 		_session->api().applyUpdates(data.updates);
 		if (weak) {
 			closeAndReactivate(CheckoutResult::Paid);
-		}
-	}, [&](const CreditsPaymentStarted &data) {
-		if (_nonPanelPaymentFormProcess) {
-			_nonPanelPaymentFormProcess(
-				std::make_shared<CreditsFormData>(data.data));
-			close();
-		}
-	}, [&](const CreditsReceiptReady &data) {
-		if (_nonPanelPaymentFormProcess) {
-			_nonPanelPaymentFormProcess(
-				std::make_shared<CreditsReceiptData>(data.data));
-			close();
 		}
 	}, [&](const Error &error) {
 		handleError(error);

@@ -174,15 +174,13 @@ void AddPremiumTopBarWithDefaultTitleBar(
 	const auto bar = Ui::CreateChild<Ui::Premium::TopBar>(
 		box.get(),
 		st::startGiveawayCover,
-		Ui::Premium::TopBarDescriptor{
-			.clickContextOther = nullptr,
-			.title = tr::lng_giveaway_new_title(),
-			.about = (group
-				? tr::lng_giveaway_new_about_group
-				: tr::lng_giveaway_new_about)(Ui::Text::RichLangValue),
-			.light = true,
-			.optimizeMinistars = false,
-		});
+		nullptr,
+		tr::lng_giveaway_new_title(),
+		(group
+			? tr::lng_giveaway_new_about_group
+			: tr::lng_giveaway_new_about)(Ui::Text::RichLangValue),
+		true,
+		false);
 	bar->setAttribute(Qt::WA_TransparentForMouseEvents);
 
 	box->addRow(

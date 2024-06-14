@@ -54,14 +54,29 @@ public:
 		bool spoiler);
 	~Gif();
 
-	bool hideMessageText() const override;
-
 	void draw(Painter &p, const PaintContext &context) const override;
 	TextState textState(QPoint point, StateRequest request) const override;
 
 	void clickHandlerPressedChanged(
 		const ClickHandlerPtr &p,
 		bool pressed) override;
+
+	[[nodiscard]] TextSelection adjustSelection(
+			TextSelection selection,
+			TextSelectType type) const override {
+		return _caption.adjustSelection(selection, type);
+	}
+	uint16 fullSelectionLength() const override {
+		return _caption.length();
+	}
+	bool hasTextForCopy() const override {
+		return !_caption.isEmpty();
+	}
+
+	TextForMimeData selectedText(TextSelection selection) const override;
+	SelectedQuote selectedQuote(TextSelection selection) const override;
+	TextSelection selectionFromQuote(
+		const SelectedQuote &quote) const override;
 
 	bool uploading() const override;
 
@@ -70,7 +85,7 @@ public:
 	}
 
 	bool fullFeaturedGrouped(RectParts sides) const;
-	QSize sizeForGroupingOptimal(int maxWidth, bool last) const override;
+	QSize sizeForGroupingOptimal(int maxWidth) const override;
 	QSize sizeForGrouping(int width) const override;
 	void drawGrouped(
 		Painter &p,
@@ -90,11 +105,14 @@ public:
 	void stopAnimation() override;
 	void checkAnimation() override;
 
+	TextWithEntities getCaption() const override {
+		return _caption.toTextWithEntities();
+	}
 	void hideSpoilers() override;
 	bool needsBubble() const override;
 	bool unwrapped() const override;
 	bool customInfoLayout() const override {
-		return true;
+		return _caption.isEmpty();
 	}
 	QRect contentRectForReactions() const override;
 	std::optional<int> reactionButtonCenterOverride() const override;
@@ -102,13 +120,16 @@ public:
 	QString additionalInfoString() const override;
 
 	bool skipBubbleTail() const override {
-		return isRoundedInBubbleBottom();
+		return isRoundedInBubbleBottom() && _caption.isEmpty();
 	}
 	bool isReadyForOpen() const override;
 
+	void parentTextUpdated() override;
+
 	bool hasHeavyPart() const override;
 	void unloadHeavyPart() override;
-	bool enforceBubbleWidth() const override;
+
+	void refreshParentId(not_null<HistoryItem*> realParent) override;
 
 	[[nodiscard]] static bool CanPlayInline(not_null<DocumentData*> document);
 
@@ -127,6 +148,7 @@ private:
 
 	void ensureDataMediaCreated() const;
 	void dataMediaCreated() const;
+	void refreshCaption();
 
 	[[nodiscard]] bool autoplayEnabled() const;
 
@@ -201,6 +223,7 @@ private:
 
 	const not_null<DocumentData*> _data;
 	const FullStoryId _storyId;
+	Ui::Text::String _caption;
 	std::unique_ptr<Streamed> _streamed;
 	const std::unique_ptr<MediaSpoiler> _spoiler;
 	mutable std::unique_ptr<TranscribeButton> _transcribe;

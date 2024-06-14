@@ -24,7 +24,7 @@ struct PeerList;
 } // namespace style
 
 namespace SendMenu {
-struct Details;
+enum class Type;
 } // namespace SendMenu
 
 namespace Window {
@@ -130,10 +130,13 @@ private:
 	void scrollAnimationCallback();
 
 	void submit(Api::SendOptions options);
+	void submitSilent();
+	void submitScheduled();
+	void submitWhenOnline();
 	void copyLink() const;
 	bool searchByUsername(bool useCache = false);
 
-	[[nodiscard]] SendMenu::Details sendMenuDetails() const;
+	SendMenu::Type sendMenuType() const;
 
 	void scrollTo(Ui::ScrollToRequest request);
 	void needSearchByUsername();

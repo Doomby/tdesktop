@@ -13,7 +13,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/peers/edit_peer_info_box.h"
 #include "boxes/peers/replace_boost_box.h"
 #include "boxes/delete_messages_box.h"
-#include "window/window_chat_preview.h"
 #include "window/window_controller.h"
 #include "window/window_filters_menu.h"
 #include "info/channel_statistics/earn/info_earn_inner_widget.h"
@@ -23,7 +22,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history.h"
 #include "history/history_item.h"
 #include "history/view/reactions/history_view_reactions.h"
-//#include "history/view/reactions/history_view_reactions_button.h"
+#include "history/view/reactions/history_view_reactions_button.h"
 #include "history/view/history_view_replies_section.h"
 #include "history/view/history_view_scheduled_section.h"
 #include "media/player/media_player_instance.h"
@@ -59,7 +58,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/format_values.h" // Ui::FormatPhone.
 #include "ui/delayed_activation.h"
 #include "ui/boxes/boost_box.h"
-#include "ui/chat/chat_style.h"
 #include "ui/chat/chat_theme.h"
 #include "ui/effects/message_sending_animation_controller.h"
 #include "ui/style/style_palette_colorizer.h"
@@ -123,7 +121,7 @@ public:
 	rpl::producer<> pauseChanged() const override;
 
 	rpl::producer<bool> adjustShadowLeft() const override;
-	SendMenu::Details sendMenuDetails() const override;
+	SendMenu::Type sendMenuType() const override;
 
 	bool showMediaPreview(
 		Data::FileOrigin origin,
@@ -273,12 +271,12 @@ rpl::producer<bool> MainWindowShow::adjustShadowLeft() const {
 	});
 }
 
-SendMenu::Details MainWindowShow::sendMenuDetails() const {
+SendMenu::Type MainWindowShow::sendMenuType() const {
 	const auto window = _window.get();
 	if (!window) {
-		return SendMenu::Details();
+		return SendMenu::Type::Disabled;
 	}
-	return window->content()->sendMenuDetails();
+	return window->content()->sendMenuType();
 }
 
 bool MainWindowShow::showMediaPreview(
@@ -1180,7 +1178,6 @@ SessionController::SessionController(
 , _window(window)
 , _emojiInteractions(
 	std::make_unique<ChatHelpers::EmojiInteractions>(session))
-, _chatPreviewManager(std::make_unique<ChatPreviewManager>(this))
 , _isPrimary(window->isPrimary())
 , _sendingAnimation(
 	std::make_unique<Ui::MessageSendingAnimationController>(this))
@@ -1193,6 +1190,7 @@ SessionController::SessionController(
 , _activeChatsFilter(session->data().chatsFilters().defaultId())
 , _defaultChatTheme(std::make_shared<Ui::ChatTheme>())
 , _chatStyle(std::make_unique<Ui::ChatStyle>(session->colorIndicesValue()))
+, _cachedReactionIconFactory(std::make_unique<ReactionIconFactory>())
 , _giftPremiumValidator(this) {
 	init();
 
@@ -1948,10 +1946,7 @@ int SessionController::countDialogsWidthFromRatio(int bodyWidth) const {
 	if (!_isPrimary) {
 		return 0;
 	}
-	const auto nochat = !mainSectionShown();
-	const auto width = bodyWidth
-		* Core::App().settings().dialogsWidthRatio(nochat);
-	auto result = qRound(width);
+	auto result = qRound(bodyWidth * Core::App().settings().dialogsWidthRatio());
 	accumulate_max(result, st::columnMinimalWidthLeft);
 //	accumulate_min(result, st::columnMaximalWidthLeft);
 	return result;
@@ -2040,12 +2035,10 @@ void SessionController::resizeForThirdSection() {
 		if (extendBy != settings.thirdColumnWidth()) {
 			settings.setThirdColumnWidth(extendBy);
 		}
-		const auto nochat = !mainSectionShown();
 		auto newBodyWidth = layout.bodyWidth + extendedBy;
-		auto currentRatio = settings.dialogsWidthRatio(nochat);
-		settings.updateDialogsWidthRatio(
-			(currentRatio * layout.bodyWidth) / newBodyWidth,
-			nochat);
+		auto currentRatio = settings.dialogsWidthRatio();
+		settings.setDialogsWidthRatio(
+			(currentRatio * layout.bodyWidth) / newBodyWidth);
 	}
 	auto savedValue = (extendedBy == extendBy) ? -1 : extendedBy;
 	settings.setThirdSectionExtendedBy(savedValue);
@@ -2061,7 +2054,6 @@ void SessionController::closeThirdSection() {
 	auto newWindowSize = widget()->size();
 	auto layout = computeColumnLayout();
 	if (layout.windowLayout == Adaptive::WindowLayout::ThreeColumn) {
-		const auto nochat = !mainSectionShown();
 		auto noResize = widget()->isFullScreen()
 			|| widget()->isMaximized();
 		auto savedValue = settings.thirdSectionExtendedBy();
@@ -2071,10 +2063,9 @@ void SessionController::closeThirdSection() {
 		auto newBodyWidth = noResize
 			? layout.bodyWidth
 			: (layout.bodyWidth - extendedBy);
-		auto currentRatio = settings.dialogsWidthRatio(nochat);
-		settings.updateDialogsWidthRatio(
-			(currentRatio * layout.bodyWidth) / newBodyWidth,
-			nochat);
+		auto currentRatio = settings.dialogsWidthRatio();
+		settings.setDialogsWidthRatio(
+			(currentRatio * layout.bodyWidth) / newBodyWidth);
 		newWindowSize = QSize(
 			widget()->width() + (newBodyWidth - layout.bodyWidth),
 			widget()->height());
@@ -2953,7 +2944,7 @@ void SessionController::openPeerStories(
 }
 
 HistoryView::PaintContext SessionController::preparePaintContext(
-		Ui::ChatPaintContextArgs &&args) {
+		PaintContextArgs &&args) {
 	const auto visibleAreaTopLocal = content()->mapFromGlobal(
 		args.visibleAreaPositionGlobal).y();
 	const auto viewport = QRect(
@@ -2974,34 +2965,6 @@ void SessionController::setPremiumRef(const QString &ref) {
 
 QString SessionController::premiumRef() const {
 	return _premiumRef;
-}
-
-bool SessionController::showChatPreview(
-		Dialogs::RowDescriptor row,
-		Fn<void(bool shown)> callback,
-		QPointer<QWidget> parentOverride,
-		std::optional<QPoint> positionOverride) {
-	return _chatPreviewManager->show(
-		std::move(row),
-		std::move(callback),
-		std::move(parentOverride),
-		positionOverride);
-}
-
-bool SessionController::scheduleChatPreview(
-		Dialogs::RowDescriptor row,
-		Fn<void(bool shown)> callback,
-	QPointer<QWidget> parentOverride,
-	std::optional<QPoint> positionOverride) {
-	return _chatPreviewManager->schedule(
-		std::move(row),
-		std::move(callback),
-		std::move(parentOverride),
-		positionOverride);
-}
-
-void SessionController::cancelScheduledPreview() {
-	_chatPreviewManager->cancelScheduled();
 }
 
 bool SessionController::contentOverlapped(QWidget *w, QPaintEvent *e) const {

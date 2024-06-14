@@ -546,25 +546,15 @@ std::vector<Selector::Entry> Selector::FullList(const QString &now) {
 			result.push_back({ .id = family });
 		}
 	}
-	auto nowIt = ranges::find(result, now, &Entry::id);
-	if (nowIt == end(result)) {
+	if (!ranges::contains(result, now, &Entry::id)) {
 		result.push_back({ .id = now });
-		nowIt = end(result) - 1;
 	}
 	for (auto i = begin(result) + 2; i != end(result); ++i) {
 		i->key = TextUtilities::RemoveAccents(i->id).toLower();
 		i->text = i->id;
 		i->keywords = TextUtilities::PrepareSearchWords(i->id);
 	}
-	auto skip = 2;
-	if (nowIt - begin(result) >= skip) {
-		std::swap(result[2], *nowIt);
-		++skip;
-	}
-	ranges::sort(
-		begin(result) + skip, end(result),
-		std::less<>(),
-		&Entry::key);
+	ranges::sort(begin(result) + 2, end(result), std::less<>(), &Entry::key);
 	return result;
 }
 

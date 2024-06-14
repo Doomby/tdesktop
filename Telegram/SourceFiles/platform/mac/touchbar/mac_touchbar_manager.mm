@@ -20,7 +20,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "platform/mac/touchbar/mac_touchbar_audio.h"
 #include "platform/mac/touchbar/mac_touchbar_common.h"
 #include "platform/mac/touchbar/mac_touchbar_main.h"
-#include "ui/widgets/fields/input_field.h"
 #include "window/window_controller.h"
 #include "window/window_session_controller.h"
 
@@ -58,12 +57,13 @@ const auto kAudioItemIdentifier = @"touchbarAudio";
 	Main::Session *_session;
 	Window::Controller *_controller;
 
-	rpl::variable<Ui::MarkdownEnabledState> _markdownState;
+	bool _canApplyMarkdownLast;
+	rpl::event_stream<bool> _canApplyMarkdown;
 	rpl::event_stream<> _touchBarSwitches;
 	rpl::lifetime _lifetime;
 }
 
-- (id)init:(rpl::producer<Ui::MarkdownEnabledState>)markdownState
+- (id)init:(rpl::producer<bool>)canApplyMarkdown
 		controller:(not_null<Window::Controller*>)controller
 		domain:(not_null<Main::Domain*>)domain {
 	self = [super init];
@@ -75,7 +75,10 @@ const auto kAudioItemIdentifier = @"touchbarAudio";
 		self.defaultItemIdentifiers = @[];
 	});
 	_controller = controller;
-	_markdownState = std::move(markdownState);
+	_canApplyMarkdownLast = false;
+	std::move(
+		canApplyMarkdown
+	) | rpl::start_to_stream(_canApplyMarkdown, _lifetime);
 
 	auto sessionChanges = domain->activeSessionChanges(
 	) | rpl::map([=](Main::Session *session) {
@@ -137,7 +140,8 @@ const auto kAudioItemIdentifier = @"touchbarAudio";
 				init:_controller
 				touchBarSwitches:_touchBarSwitches.events()] autorelease];
 		rpl::combine(
-			_markdownState.value(),
+			_canApplyMarkdown.events_starting_with_copy(
+				_canApplyMarkdownLast),
 			_controller->sessionController()->activeChatValue(
 			) | rpl::map([](Dialogs::Key k) {
 				const auto topic = k.topic();
@@ -149,15 +153,16 @@ const auto kAudioItemIdentifier = @"touchbarAudio";
 					: (peer && Data::CanSendAnyOf(peer, rights));
 			}) | rpl::distinct_until_changed()
 		) | rpl::start_with_next([=](
-				Ui::MarkdownEnabledState state,
+				bool canApplyMarkdown,
 				bool hasActiveChat) {
+			_canApplyMarkdownLast = canApplyMarkdown;
 			item.groupTouchBar.defaultItemIdentifiers = @[
 				kPinnedPanelItemIdentifier,
-				(!state.disabled()
+				canApplyMarkdown
 					? kPopoverInputItemIdentifier
 					: hasActiveChat
 					? kPopoverPickerItemIdentifier
-					: @"")];
+					: @""];
 		}, [item lifetime]);
 
 		return [item autorelease];

@@ -37,12 +37,10 @@ namespace {
 
 void AboutBox(
 		not_null<Ui::GenericBox*> box,
-		std::shared_ptr<ChatHelpers::Show> show) {
+		not_null<Main::Session*> session) {
 	constexpr auto kUrl = "https://promote.telegram.org"_cs;
 
 	box->setNoContentMargin(true);
-
-	const auto session = &show->session();
 
 	const auto content = box->verticalLayout().get();
 	const auto levels = Data::LevelLimits(session)
@@ -103,7 +101,7 @@ void AboutBox(
 					st::channelEarnSemiboldLabel),
 				padding);
 			Ui::AddSkip(content, st::channelEarnHistoryThreeSkip);
-			const auto label = content->add(
+			content->add(
 				object_ptr<Ui::FlatLabel>(
 					content,
 					std::move(about),
@@ -123,7 +121,6 @@ void AboutBox(
 					(g.left() - left->width()) / 2,
 					g.top() + st::channelEarnHistoryThreeSkip);
 			}, left->lifetime());
-			return label;
 		};
 		addEntry(
 			tr::lng_sponsored_revenued_info1_title(),
@@ -147,14 +144,10 @@ void AboutBox(
 				lt_link,
 				tr::lng_settings_privacy_premium_link(
 				) | rpl::map([=](QString t) {
-					return Ui::Text::Link(std::move(t), u"internal:"_q);
+					return Ui::Text::Link(t, kUrl.utf16());
 				}),
 				Ui::Text::RichLangValue),
-			st::sponsoredAboutRemoveIcon)->setClickHandlerFilter([=](
-					const auto &...) {
-				ShowPremiumPreviewBox(show, PremiumFeature::NoAds);
-				return true;
-			});
+			st::sponsoredAboutRemoveIcon);
 		Ui::AddSkip(content);
 		Ui::AddSkip(content);
 	}
@@ -339,14 +332,16 @@ void ShowSponsored(
 		not_null<HistoryItem*> item) {
 	Expects(item->isSponsored());
 
-	const auto session = &item->history()->session();
+	struct State final {
+	};
+	const auto state = std::make_shared<State>();
 
 	const auto menu = Ui::CreateChild<Ui::PopupMenu>(
 		parent.get(),
 		st::popupMenuWithIcons);
 
 	menu->addAction(tr::lng_sponsored_menu_revenued_about(tr::now), [=] {
-		show->show(Box(AboutBox, show));
+		show->show(Box(AboutBox, &item->history()->session()));
 	}, &st::menuIconInfo);
 
 	menu->addAction(tr::lng_sponsored_menu_revenued_report(tr::now), [=] {
@@ -356,13 +351,7 @@ void ShowSponsored(
 	menu->addSeparator(&st::expandedMenuSeparator);
 
 	menu->addAction(tr::lng_sponsored_hide_ads(tr::now), [=] {
-		if (session->premium()) {
-			using Result = Data::SponsoredReportResult;
-			session->sponsoredMessages().createReportCallback(
-				item->fullId())(Result::Id("-1"), [](const auto &) {});
-		} else {
-			ShowPremiumPreviewBox(show, PremiumFeature::NoAds);
-		}
+		ShowPremiumPreviewBox(show, PremiumFeature::NoAds);
 	}, &st::menuIconCancel);
 
 	menu->popup(QCursor::pos());
@@ -370,7 +359,7 @@ void ShowSponsored(
 
 void ShowSponsoredAbout(std::shared_ptr<ChatHelpers::Show> show) {
 	show->showBox(Box([=](not_null<Ui::GenericBox*> box) {
-		AboutBox(box, show);
+		AboutBox(box, &show->session());
 	}));
 }
 

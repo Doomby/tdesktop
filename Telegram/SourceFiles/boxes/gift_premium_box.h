@@ -16,14 +16,12 @@ struct GiftCode;
 } // namespace Api
 
 namespace Data {
-struct CreditsHistoryEntry;
 struct GiveawayStart;
 struct GiveawayResults;
 } // namespace Data
 
 namespace Ui {
 class GenericBox;
-class VerticalLayout;
 } // namespace Ui
 
 namespace Window {
@@ -73,8 +71,3 @@ void ResolveGiveawayInfo(
 	MsgId messageId,
 	std::optional<Data::GiveawayStart> start,
 	std::optional<Data::GiveawayResults> results);
-
-void AddCreditsHistoryEntryTable(
-	not_null<Window::SessionNavigation*> controller,
-	not_null<Ui::VerticalLayout*> container,
-	const Data::CreditsHistoryEntry &entry);

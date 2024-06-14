@@ -22,14 +22,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 class History;
 class DocumentData;
 class FieldAutocomplete;
-class Image;
 
 namespace style {
 struct ComposeControls;
 } // namespace style
 
 namespace SendMenu {
-struct Details;
+enum class Type;
 } // namespace SendMenu
 
 namespace ChatHelpers {
@@ -104,7 +103,7 @@ struct ComposeControlsDescriptor {
 	std::shared_ptr<ChatHelpers::Show> show;
 	Fn<void(not_null<DocumentData*>)> unavailableEmojiPasted;
 	ComposeControlsMode mode = ComposeControlsMode::Normal;
-	Fn<SendMenu::Details()> sendMenuDetails = nullptr;
+	SendMenu::Type sendMenuType = {};
 	Window::SessionController *regularWindow = nullptr;
 	rpl::producer<ChatHelpers::FileChosen> stickerOrEmojiChosen;
 	rpl::producer<QString> customPlaceholder;
@@ -282,9 +281,8 @@ private:
 	void paintBackground(QPainter &p, QRect full, QRect clip);
 
 	[[nodiscard]] auto computeSendButtonType() const;
-	[[nodiscard]] SendMenu::Details sendMenuDetails() const;
-	[[nodiscard]] SendMenu::Details saveMenuDetails() const;
-	[[nodiscard]] SendMenu::Details sendButtonMenuDetails() const;
+	[[nodiscard]] SendMenu::Type sendMenuType() const;
+	[[nodiscard]] SendMenu::Type sendButtonMenuType() const;
 
 	[[nodiscard]] auto sendContentRequests(
 		SendRequestType requestType = SendRequestType::Text) const;
@@ -397,7 +395,7 @@ private:
 	const std::unique_ptr<FieldHeader> _header;
 	const std::unique_ptr<Controls::VoiceRecordBar> _voiceRecordBar;
 
-	const Fn<SendMenu::Details()> _sendMenuDetails;
+	const SendMenu::Type _sendMenuType;
 	const Fn<void(not_null<DocumentData*>)> _unavailableEmojiPasted;
 
 	rpl::event_stream<Api::SendOptions> _sendCustomRequests;
@@ -452,15 +450,5 @@ private:
 	not_null<PeerData*> peer);
 [[nodiscard]] rpl::producer<bool> SendDisabledBySlowmode(
 	not_null<PeerData*> peer);
-
-void ShowPhotoEditSpoilerMenu(
-	not_null<Ui::RpWidget*> parent,
-	not_null<HistoryItem*> item,
-	const std::optional<bool> &override,
-	Fn<void(bool)> callback);
-
-[[nodiscard]] Image *MediaPreviewWithOverriddenSpoiler(
-	not_null<HistoryItem*> item,
-	bool spoiler);
 
 } // namespace HistoryView

@@ -550,12 +550,6 @@ void Manager::Private::checkFocusState() {
 }
 
 Manager::Private::~Private() {
-	if (_waitingDnd) {
-		_dnd.kill();
-	}
-	if (_waitingFocus) {
-		_focus.kill();
-	}
 	if (_clearingThread.joinable()) {
 		putClearTask(ClearFinish());
 		_clearingThread.join();

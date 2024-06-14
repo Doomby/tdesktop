@@ -286,7 +286,7 @@ void PreloadSticker(const std::shared_ptr<Data::DocumentMedia> &media) {
 			document,
 			media->videoThumbnailContent(),
 			QString(),
-			Stickers::EffectType::PremiumSticker);
+			true);
 
 		const auto update = [=] {
 			if (!state->readyInvoked

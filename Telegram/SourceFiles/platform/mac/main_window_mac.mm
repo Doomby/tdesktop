@@ -63,26 +63,6 @@ namespace {
 // fullscreen mode, after that we'll hide the window no matter what.
 constexpr auto kHideAfterFullscreenTimeoutMs = 3000;
 
-[[nodiscard]] bool PossiblyTextTypingEvent(NSEvent *e) {
-	if ([e type] != NSEventTypeKeyDown) {
-		return false;
-	}
-	NSEventModifierFlags flags = [e modifierFlags]
-		& NSEventModifierFlagDeviceIndependentFlagsMask;
-	if ((flags & ~NSEventModifierFlagShift) != 0) {
-		return false;
-	}
-	NSString *text = [e characters];
-	const auto length = int([text length]);
-	for (auto i = 0; i != length; ++i) {
-		const auto utf16 = [text characterAtIndex:i];
-		if (utf16 >= 32) {
-			return true;
-		}
-	}
-	return false;
-}
-
 } // namespace
 
 class MainWindow::Private {
@@ -92,10 +72,9 @@ public:
 	void setNativeWindow(NSWindow *window, NSView *view);
 	void initTouchBar(
 		NSWindow *window,
-		not_null<Window::Controller*> controller);
+		not_null<Window::Controller*> controller,
+		rpl::producer<bool> canApplyMarkdown);
 	void setWindowBadge(const QString &str);
-
-	void setMarkdownEnabledState(Ui::MarkdownEnabledState state);
 
 	bool clipboardHasText();
 	~Private();
@@ -103,8 +82,6 @@ public:
 private:
 	not_null<MainWindow*> _public;
 	friend class MainWindow;
-
-	rpl::variable<Ui::MarkdownEnabledState> _markdownState;
 
 	NSWindow * __weak _nativeWindow = nil;
 	NSView * __weak _nativeView = nil;
@@ -232,7 +209,8 @@ void MainWindow::Private::setNativeWindow(NSWindow *window, NSView *view) {
 
 void MainWindow::Private::initTouchBar(
 		NSWindow *window,
-		not_null<Window::Controller*> controller) {
+		not_null<Window::Controller*> controller,
+		rpl::producer<bool> canApplyMarkdown) {
 	if (!IsMac10_13OrGreater()) {
 		return;
 	}
@@ -242,15 +220,10 @@ void MainWindow::Private::initTouchBar(
 	[window
 		performSelectorOnMainThread:@selector(setTouchBar:)
 		withObject:[[[RootTouchBar alloc]
-			init:_markdownState.value()
+			init:std::move(canApplyMarkdown)
 			controller:controller
 			domain:(&Core::App().domain())] autorelease]
 		waitUntilDone:true];
-}
-
-void MainWindow::Private::setMarkdownEnabledState(
-		Ui::MarkdownEnabledState state) {
-	_markdownState = state;
 }
 
 bool MainWindow::Private::clipboardHasText() {
@@ -296,37 +269,15 @@ void MainWindow::initHook() {
 	if (auto view = reinterpret_cast<NSView*>(winId())) {
 		if (auto window = [view window]) {
 			_private->setNativeWindow(window, view);
-			_private->initTouchBar(window, &controller());
+			_private->initTouchBar(
+				window,
+				&controller(),
+				_canApplyMarkdown.changes());
 		}
 	}
 }
 
 void MainWindow::updateWindowIcon() {
-}
-
-bool MainWindow::nativeEvent(
-		const QByteArray &eventType,
-		void *message,
-		qintptr *result) {
-	if (message && eventType == "NSEvent") {
-		const auto event = static_cast<NSEvent*>(message);
-		if (PossiblyTextTypingEvent(event)) {
-			Core::Sandbox::Instance().customEnterFromEventLoop([&] {
-				imeCompositionStartReceived();
-			});
-		} else if ([event type] == NSEventTypePressure) {
-			const auto stage = [event stage];
-			if (_lastPressureStage != stage) {
-				_lastPressureStage = stage;
-				if (stage == 2) {
-					Core::Sandbox::Instance().customEnterFromEventLoop([&] {
-						_forceClicks.fire(QCursor::pos());
-					});
-				}
-			}
-		}
-	}
-	return false;
 }
 
 void MainWindow::hideAndDeactivate() {
@@ -562,7 +513,7 @@ void MainWindow::updateGlobalMenuHook() {
 	auto focused = QApplication::focusWidget();
 	bool canUndo = false, canRedo = false, canCut = false, canCopy = false, canPaste = false, canDelete = false, canSelectAll = false;
 	auto clipboardHasText = _private->clipboardHasText();
-	auto markdownState = Ui::MarkdownEnabledState();
+	auto canApplyMarkdown = false;
 	if (auto edit = qobject_cast<QLineEdit*>(focused)) {
 		canCut = canCopy = canDelete = edit->hasSelectedText();
 		canSelectAll = !edit->text().isEmpty();
@@ -578,7 +529,7 @@ void MainWindow::updateGlobalMenuHook() {
 		if (canCopy) {
 			if (const auto inputField = dynamic_cast<Ui::InputField*>(
 					focused->parentWidget())) {
-				markdownState = inputField->markdownEnabledState();
+				canApplyMarkdown = inputField->isMarkdownEnabled();
 			}
 		}
 	} else if (auto list = dynamic_cast<HistoryInner*>(focused)) {
@@ -586,7 +537,7 @@ void MainWindow::updateGlobalMenuHook() {
 		canDelete = list->canDeleteSelected();
 	}
 
-	_private->setMarkdownEnabledState(markdownState);
+	_canApplyMarkdown = canApplyMarkdown;
 
 	updateIsActive();
 	const auto logged = (sessionController() != nullptr);
@@ -607,19 +558,13 @@ void MainWindow::updateGlobalMenuHook() {
 	ForceDisabled(psNewChannel, inactive || support);
 	ForceDisabled(psShowTelegram, isActive());
 
-	const auto diabled = [=](const QString &tag) {
-		return !markdownState.enabledForTag(tag);
-	};
-	using Field = Ui::InputField;
-	ForceDisabled(psBold, diabled(Field::kTagBold));
-	ForceDisabled(psItalic, diabled(Field::kTagItalic));
-	ForceDisabled(psUnderline, diabled(Field::kTagUnderline));
-	ForceDisabled(psStrikeOut, diabled(Field::kTagStrikeOut));
-	ForceDisabled(psBlockquote, diabled(Field::kTagBlockquote));
-	ForceDisabled(
-		psMonospace,
-		diabled(Field::kTagPre) || diabled(Field::kTagCode));
-	ForceDisabled(psClearFormat, markdownState.disabled());
+	ForceDisabled(psBold, !canApplyMarkdown);
+	ForceDisabled(psItalic, !canApplyMarkdown);
+	ForceDisabled(psUnderline, !canApplyMarkdown);
+	ForceDisabled(psStrikeOut, !canApplyMarkdown);
+	ForceDisabled(psBlockquote, !canApplyMarkdown);
+	ForceDisabled(psMonospace, !canApplyMarkdown);
+	ForceDisabled(psClearFormat, !canApplyMarkdown);
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *evt) {

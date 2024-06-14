@@ -362,9 +362,7 @@ private:
 
 	const style::OverviewFileLayout &_st;
 
-	Ui::Text::String _name;
-	Ui::Text::String _details;
-	Ui::Text::String _caption;
+	Ui::Text::String _name, _details;
 	int _nameVersion = 0;
 
 	void updateName();

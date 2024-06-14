@@ -5,7 +5,7 @@ the official desktop application for the Telegram messaging service.
 For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
-#include "history/view/history_view_text_helper.h"
+#include "history/view/history_view_spoiler_click_handler.h"
 
 #include "data/data_session.h"
 #include "history/view/history_view_element.h"
@@ -15,7 +15,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace HistoryView {
 
-void InitElementTextPart(not_null<Element*> view, Ui::Text::String &text) {
+void FillTextWithAnimatedSpoilers(
+		not_null<Element*> view,
+		Ui::Text::String &text) {
 	if (text.hasSpoilers()) {
 		text.setSpoilerLinkFilter([weak = base::make_weak(view)](
 				const ClickContext &context) {
@@ -26,14 +28,6 @@ void InitElementTextPart(not_null<Element*> view, Ui::Text::String &text) {
 			}
 			view->history()->owner().registerShownSpoiler(view);
 			return true;
-		});
-	}
-	if (text.hasCollapsedBlockquots()) {
-		const auto weak = base::make_weak(view);
-		text.setBlockquoteExpandCallback([=](int quoteIndex, bool expanded) {
-			if (const auto view = weak.get()) {
-				view->blockquoteExpandChanged();
-			}
 		});
 	}
 }

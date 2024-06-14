@@ -61,7 +61,6 @@ enum class Context : char {
 	TTLViewer,
 	ShortcutMessages,
 	ScheduledTopic,
-	ChatPreview,
 };
 
 enum class OnlyEmojiAndSpaces : char {
@@ -113,11 +112,7 @@ public:
 		not_null<const Element*> view,
 		Element *replacing) = 0;
 	virtual void elementCancelPremium(not_null<const Element*> view) = 0;
-	virtual void elementStartEffect(
-		not_null<const Element*> view,
-		Element *replacing) = 0;
 	virtual QString elementAuthorRank(not_null<const Element*> view) = 0;
-	virtual bool elementHideTopicButton(not_null<const Element*> view) = 0;
 
 	virtual ~ElementDelegate() {
 	}
@@ -167,11 +162,7 @@ public:
 		not_null<const Element*> view,
 		Element *replacing) override;
 	void elementCancelPremium(not_null<const Element*> view) override;
-	void elementStartEffect(
-		not_null<const Element*> view,
-		Element *replacing) override;
 	QString elementAuthorRank(not_null<const Element*> view) override;
-	bool elementHideTopicButton(not_null<const Element*> view) override;
 
 };
 
@@ -375,7 +366,6 @@ public:
 			&& _text.isOnlyCustomEmoji();
 	}
 
-	[[nodiscard]] HistoryItem *textItem() const;
 	[[nodiscard]] Ui::Text::IsolatedEmoji isolatedEmoji() const;
 	[[nodiscard]] Ui::Text::OnlyCustomEmoji onlyCustomEmoji() const;
 
@@ -479,7 +469,6 @@ public:
 		std::optional<QPoint> pressPoint) const;
 	[[nodiscard]] virtual TimeId displayedEditDate() const;
 	[[nodiscard]] virtual bool hasVisibleText() const;
-	[[nodiscard]] int textualMaxWidth() const;
 	virtual void applyGroupAdminChanges(
 		const base::flat_set<UserId> &changes) {
 	}
@@ -500,7 +489,6 @@ public:
 
 	virtual void itemDataChanged();
 	void itemTextUpdated();
-	void blockquoteExpandChanged();
 
 	[[nodiscard]] virtual bool hasHeavyPart() const;
 	virtual void unloadHeavyPart();
@@ -528,7 +516,6 @@ public:
 	void previousInBlocksChanged();
 	void nextInBlocksRemoved();
 
-	[[nodiscard]] virtual QRect effectIconGeometry() const;
 	[[nodiscard]] virtual QRect innerGeometry() const = 0;
 
 	void customEmojiRepaint();
@@ -556,11 +543,6 @@ public:
 	-> base::flat_map<
 		Data::ReactionId,
 		std::unique_ptr<Ui::ReactionFlyAnimation>>;
-
-	virtual void animateEffect(Ui::ReactionFlyAnimationArgs &&args);
-	void animateUnreadEffect();
-	[[nodiscard]] virtual auto takeEffectAnimation()
-	-> std::unique_ptr<Ui::ReactionFlyAnimation>;
 
 	void overrideMedia(std::unique_ptr<Media> media);
 
@@ -638,7 +620,6 @@ private:
 	mutable ClickHandlerPtr _fromLink;
 	const QDateTime _dateTime;
 
-	HistoryItem *_textItem = nullptr;
 	mutable Ui::Text::String _text;
 	mutable int _textWidth = -1;
 	mutable int _textHeight = 0;

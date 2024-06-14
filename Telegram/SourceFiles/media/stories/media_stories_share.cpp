@@ -128,7 +128,9 @@ namespace Media::Stories {
 			if (action.replyTo) {
 				sendFlags |= MTPmessages_SendMedia::Flag::f_reply_to;
 			}
-			const auto silentPost = ShouldSendSilent(threadPeer, options);
+			const auto silentPost = ShouldSendSilent(
+				threadPeer,
+				action.options);
 			if (silentPost) {
 				sendFlags |= MTPmessages_SendMedia::Flag::f_silent;
 			}
@@ -137,12 +139,6 @@ namespace Media::Stories {
 			}
 			if (options.shortcutId) {
 				sendFlags |= MTPmessages_SendMedia::Flag::f_quick_reply_shortcut;
-			}
-			if (options.effectId) {
-				sendFlags |= MTPmessages_SendMedia::Flag::f_effect;
-			}
-			if (options.invertCaption) {
-				sendFlags |= MTPmessages_SendMedia::Flag::f_invert_media;
 			}
 			const auto done = [=] {
 				if (!--state->requests) {
@@ -165,17 +161,14 @@ namespace Media::Stories {
 					MTP_long(randomId),
 					MTPReplyMarkup(),
 					MTPVector<MTPMessageEntity>(),
-					MTP_int(options.scheduled),
+					MTP_int(action.options.scheduled),
 					MTP_inputPeerEmpty(),
-					Data::ShortcutIdToMTP(session, options.shortcutId),
-					MTP_long(options.effectId)
+					Data::ShortcutIdToMTP(session, action.options.shortcutId)
 				), [=](
 						const MTPUpdates &result,
 						const MTP::Response &response) {
 					done();
-				}, [=](
-						const MTP::Error &error,
-						const MTP::Response &response) {
+				}, [=](const MTP::Error &error, const MTP::Response &response) {
 					api->sendMessageFail(error, threadPeer, randomId);
 					done();
 				});

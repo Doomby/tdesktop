@@ -783,7 +783,6 @@ void Viewport::RendererGL::paintTile(
 		: &*_frameProgram.yuv420;
 	const auto uniformViewport = QSizeF(_viewport) * _factor;
 
-	program->bind();
 	program->setUniformValue("viewport", uniformViewport);
 	program->setUniformValue(
 		"frameBg",
@@ -1079,7 +1078,6 @@ void Viewport::RendererGL::drawDownscalePass(
 		? &*_downscaleProgram.argb32
 		: &*_downscaleProgram.yuv420;
 
-	program->bind();
 	FillTexturedRectangle(f, program);
 }
 

@@ -44,11 +44,13 @@ bool UnsafeShowOpenWith(const QString &filepath) {
 
 	const auto fd = open(
 		QFile::encodeName(filepath).constData(),
-		O_RDONLY | O_CLOEXEC);
+		O_RDONLY);
 
 	if (fd == -1) {
 		return false;
 	}
+
+	const auto fdGuard = gsl::finally([&] { close(fd); });
 
 	const auto handleToken = "tdesktop"
 		+ std::to_string(base::RandomValue<uint>());
@@ -71,7 +73,6 @@ bool UnsafeShowOpenWith(const QString &filepath) {
 			nullptr));
 
 	if (!request) {
-		close(fd);
 		return false;
 	}
 
@@ -106,7 +107,7 @@ bool UnsafeShowOpenWith(const QString &filepath) {
 				GLib::Variant::new_variant(
 					GLib::Variant::new_boolean(true))),
 		}),
-		Gio::UnixFDList::new_from_array(&fd, 1),
+		Gio::UnixFDList::new_from_array((std::array{ fd }).data(), 1),
 		nullptr);
 
 	if (!result) {

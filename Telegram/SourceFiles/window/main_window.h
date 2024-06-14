@@ -119,8 +119,7 @@ public:
 
 	void launchDrag(std::unique_ptr<QMimeData> data, Fn<void()> &&callback);
 
-	[[nodiscard]] rpl::producer<> leaveEvents() const;
-	[[nodiscard]] rpl::producer<> imeCompositionStarts() const;
+	rpl::producer<> leaveEvents() const;
 
 	virtual void updateWindowIcon() = 0;
 	void updateTitle();
@@ -143,10 +142,6 @@ public:
 		Core::WindowPosition position,
 		Core::WindowPosition initial,
 		QSize minSize) const;
-
-	[[nodiscard]] virtual rpl::producer<QPoint> globalForceClicks() {
-		return rpl::never<QPoint>();
-	}
 
 protected:
 	void leaveEventHook(QEvent *e) override;
@@ -190,7 +185,6 @@ protected:
 		return false;
 	}
 
-	void imeCompositionStartReceived();
 	void setPositionInited();
 
 	virtual QRect computeDesktopRect() const;
@@ -220,7 +214,6 @@ private:
 	bool _isActive = false;
 
 	rpl::event_stream<> _leaveEvents;
-	rpl::event_stream<> _imeCompositionStartReceived;
 
 	bool _maximizedBeforeHide = false;
 

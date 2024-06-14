@@ -85,10 +85,7 @@ std::unique_ptr<PeerListRow> ListController::createRow(
 	if (const auto channel = peer->asChannel()) {
 		if (const auto count = channel->membersCount(); count > 1) {
 			result->setCustomStatus(
-				tr::lng_chat_status_subscribers(
-					tr::now,
-					lt_count_decimal,
-					count));
+				tr::lng_chat_status_subscribers(tr::now, lt_count, count));
 		}
 	}
 	return result;

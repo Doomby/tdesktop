@@ -45,7 +45,7 @@ struct ResultSelected;
 } // namespace InlineBots
 
 namespace SendMenu {
-struct Details;
+enum class Type;
 } // namespace SendMenu
 
 namespace InlineBots {
@@ -75,7 +75,7 @@ public:
 	void hideAnimated();
 
 	void setResultSelectedCallback(Fn<void(ResultSelected)> callback);
-	void setSendMenuDetails(Fn<SendMenu::Details()> &&callback);
+	void setSendMenuType(Fn<SendMenu::Type()> &&callback);
 
 	[[nodiscard]] rpl::producer<bool> requesting() const {
 		return _requesting.events();

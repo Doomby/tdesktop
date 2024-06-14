@@ -307,8 +307,6 @@ std::vector<TextPart> ParseText(
 			return NumberToString(data.vuser_id().v);
 		}, [](const MTPDmessageEntityCustomEmoji &data) {
 			return NumberToString(data.vdocument_id().v);
-		}, [](const MTPDmessageEntityBlockquote &data) {
-			return data.is_collapsed() ? Utf8String("1") : Utf8String();
 		}, [](const auto &) { return Utf8String(); });
 
 		result.push_back(std::move(part));

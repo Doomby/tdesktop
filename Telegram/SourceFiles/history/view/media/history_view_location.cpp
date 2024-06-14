@@ -509,10 +509,7 @@ void Location::paintLiveRemaining(
 			auto pen = QPen(color);
 			pen.setWidthF(stroke);
 			p.setPen(pen);
-			p.drawArc(
-				rect,
-				arc::kQuarterLength,
-				int(base::SafeRound(arc::kFullLength * progress)));
+			p.drawArc(rect, 90 * 16, int(base::SafeRound(360 * 16 * progress)));
 		}
 
 		p.setPen(stm->msgServiceFg);

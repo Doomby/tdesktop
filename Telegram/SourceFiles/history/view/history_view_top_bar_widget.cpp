@@ -1412,25 +1412,15 @@ QString TopBarWidget::searchQueryCurrent() const {
 	return _searchQuery.current();
 }
 
-int TopBarWidget::searchQueryCursorPosition() const {
-	return _searchMode
-		? _searchField->textCursor().position()
-		: _searchQuery.current().size();
-}
-
 void TopBarWidget::searchClear() {
 	if (_searchMode) {
 		_searchField->clear();
 	}
 }
 
-void TopBarWidget::searchSetText(const QString &query, int cursorPosition) {
+void TopBarWidget::searchSetText(const QString &query) {
 	if (_searchMode) {
-		if (cursorPosition < 0) {
-			cursorPosition = query.size();
-		}
 		_searchField->setText(query);
-		_searchField->setCursorPosition(cursorPosition);
 	}
 }
 

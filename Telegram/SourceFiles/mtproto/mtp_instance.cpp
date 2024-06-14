@@ -1020,24 +1020,11 @@ void Instance::Private::sendRequest(
 	const auto signedDcId = toMainDc ? -realShiftedDcId : realShiftedDcId;
 	registerRequest(requestId, signedDcId);
 
-	request->lastSentTime = crl::now();
-	request->needsLayer = needsLayer;
-
 	if (afterRequestId) {
 		request->after = getRequest(afterRequestId);
-
-		if (request->after) {
-			// Check if this after request is waiting in _dependentRequests.
-			// This happens if it was after some other request and failed
-			// to wait for it, but that other request is still processed.
-			QMutexLocker locker(&_dependentRequestsLock);
-			const auto i = _dependentRequests.find(afterRequestId);
-			if (i != end(_dependentRequests)) {
-				_dependentRequests.emplace(requestId, afterRequestId);
-				return;
-			}
-		}
 	}
+	request->lastSentTime = crl::now();
+	request->needsLayer = needsLayer;
 
 	session->sendPrepared(request, msCanWait);
 }

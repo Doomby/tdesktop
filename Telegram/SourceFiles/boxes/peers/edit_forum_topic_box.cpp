@@ -42,14 +42,16 @@ namespace {
 
 constexpr auto kDefaultIconId = DocumentId(0x7FFF'FFFF'FFFF'FFFFULL);
 
-using DefaultIcon = Data::TopicIconDescriptor;
+struct DefaultIcon {
+	QString title;
+	int32 colorId = 0;
+};
 
 class DefaultIconEmoji final : public Ui::Text::CustomEmoji {
 public:
 	DefaultIconEmoji(
 		rpl::producer<DefaultIcon> value,
-		Fn<void()> repaint,
-		Data::CustomEmojiSizeTag tag);
+		Fn<void()> repaint);
 
 	int width() override;
 	QString entityData() override;
@@ -62,17 +64,14 @@ public:
 private:
 	DefaultIcon _icon = {};
 	QImage _image;
-	Data::CustomEmojiSizeTag _tag = {};
 
 	rpl::lifetime _lifetime;
 
 };
 
 DefaultIconEmoji::DefaultIconEmoji(
-	rpl::producer<DefaultIcon> value,
-	Fn<void()> repaint,
-	Data::CustomEmojiSizeTag tag)
-: _tag(tag) {
+		rpl::producer<DefaultIcon> value,
+		Fn<void()> repaint) {
 	std::move(value) | rpl::start_with_next([=](DefaultIcon value) {
 		_icon = value;
 		_image = QImage();
@@ -89,22 +88,15 @@ QString DefaultIconEmoji::entityData() {
 }
 
 void DefaultIconEmoji::paint(QPainter &p, const Context &context) {
-	const auto &st = (_tag == Data::CustomEmojiSizeTag::Normal)
-		? st::normalForumTopicIcon
-		: st::defaultForumTopicIcon;
 	if (_image.isNull()) {
-		_image = Data::IsForumGeneralIconTitle(_icon.title)
-			? Data::ForumTopicGeneralIconFrame(
-				st.size,
-				Data::ParseForumGeneralIconColor(_icon.colorId))
-			: Data::ForumTopicIconFrame(_icon.colorId, _icon.title, st);
+		_image = Data::ForumTopicIconFrame(
+			_icon.colorId,
+			_icon.title,
+			st::defaultForumTopicIcon);
 	}
-	const auto full = (_tag == Data::CustomEmojiSizeTag::Normal)
-		? Ui::Emoji::GetSizeNormal()
-		: Ui::Emoji::GetSizeLarge();
-	const auto esize = full / style::DevicePixelRatio();
+	const auto esize = Ui::Emoji::GetSizeLarge() / style::DevicePixelRatio();
 	const auto customSize = Ui::Text::AdjustCustomEmojiSize(esize);
-	const auto skip = (customSize - st.size) / 2;
+	const auto skip = (customSize - st::defaultForumTopicIcon.size) / 2;
 	p.drawImage(context.position + QPoint(skip, skip), _image);
 }
 
@@ -220,7 +212,7 @@ bool DefaultIconEmoji::readyInDefaultState() {
 	) | rpl::start_with_next([=] {
 		state->frame = Data::ForumTopicGeneralIconFrame(
 			st::largeForumTopicIcon.size,
-			st::windowSubTextFg->c);
+			st::windowSubTextFg);
 		result->update();
 	}, result->lifetime());
 
@@ -269,8 +261,7 @@ struct IconSelector {
 		if (id == kDefaultIconId) {
 			return std::make_unique<DefaultIconEmoji>(
 				rpl::duplicate(defaultIcon),
-				std::move(repaint),
-				tag);
+				repaint);
 		}
 		return manager->create(id, std::move(repaint), tag);
 	};
@@ -580,14 +571,4 @@ void EditForumTopicBox(
 	box->addButton(tr::lng_cancel(), [=] {
 		box->closeBox();
 	});
-}
-
-std::unique_ptr<Ui::Text::CustomEmoji> MakeTopicIconEmoji(
-		Data::TopicIconDescriptor descriptor,
-		Fn<void()> repaint,
-		Data::CustomEmojiSizeTag tag) {
-	return std::make_unique<DefaultIconEmoji>(
-		rpl::single(descriptor),
-		std::move(repaint),
-		tag);
 }

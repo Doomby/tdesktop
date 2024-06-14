@@ -55,7 +55,6 @@ mtpRequestId EditTextMessage(
 	Data::WebPageDraft webpage,
 	SendOptions options,
 	Fn<void(mtpRequestId requestId)> done,
-	Fn<void(const QString &error, mtpRequestId requestId)> fail,
-	bool spoilered);
+	Fn<void(const QString &error, mtpRequestId requestId)> fail);
 
 } // namespace Api

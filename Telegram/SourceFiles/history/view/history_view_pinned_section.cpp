@@ -94,7 +94,6 @@ PinnedWidget::PinnedWidget(
 	not_null<Window::SessionController*> controller,
 	not_null<Data::Thread*> thread)
 : Window::SectionWidget(parent, controller, thread->peer())
-, WindowListDelegate(controller)
 , _thread(thread->migrateToOrMe())
 , _history(thread->owningHistory())
 , _migratedPeer(thread->asHistory()
@@ -162,7 +161,7 @@ PinnedWidget::PinnedWidget(
 
 	_inner = _scroll->setOwnedWidget(object_ptr<ListWidget>(
 		this,
-		&controller->session(),
+		controller,
 		static_cast<ListDelegate*>(this)));
 	_scroll->move(0, _topBar->height());
 	_scroll->show();
@@ -677,11 +676,6 @@ void PinnedWidget::listPaintEmpty(
 
 QString PinnedWidget::listElementAuthorRank(not_null<const Element*> view) {
 	return {};
-}
-
-bool PinnedWidget::listElementHideTopicButton(
-		not_null<const Element*> view) {
-	return true;
 }
 
 History *PinnedWidget::listTranslateHistory() {
