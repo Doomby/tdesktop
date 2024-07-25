@@ -901,7 +901,7 @@ void AttachWebView::request(const WebViewButton &button) {
 		MTP_bytes(button.url),
 		MTP_string(_startCommand),
 		MTP_dataJSON(MTP_bytes(Window::Theme::WebViewParams().json)),
-		MTP_string("tdesktop"),
+		MTP_string("android"),
 		action.mtpReplyTo(),
 		(action.options.sendAs
 			? action.options.sendAs->input
@@ -1222,7 +1222,7 @@ void AttachWebView::requestSimple(const WebViewButton &button) {
 		MTP_bytes(button.url),
 		MTP_string(button.startCommand),
 		MTP_dataJSON(MTP_bytes(Window::Theme::WebViewParams().json)),
-		MTP_string("tdesktop")
+		MTP_string("android")
 	)).done([=](const MTPWebViewResult &result) {
 		_requestId = 0;
 		const auto &data = result.data();
@@ -1300,7 +1300,7 @@ void AttachWebView::requestMenu(
 			MTP_string(url),
 			MTPstring(), // start_param
 			MTP_dataJSON(MTP_bytes(Window::Theme::WebViewParams().json)),
-			MTP_string("tdesktop"),
+			MTP_string("android"),
 			action.mtpReplyTo(),
 			(action.options.sendAs
 				? action.options.sendAs->input
@@ -1430,7 +1430,7 @@ void AttachWebView::requestAppView(bool allowWrite) {
 		MTP_inputBotAppID(MTP_long(app->id), MTP_long(app->accessHash)),
 		MTP_string(_startCommand),
 		MTP_dataJSON(MTP_bytes(Window::Theme::WebViewParams().json)),
-		MTP_string("tdesktop")
+		MTP_string("android")
 	)).done([=](const MTPWebViewResult &result) {
 		_requestId = 0;
 		const auto &data = result.data();

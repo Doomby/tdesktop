@@ -1259,6 +1259,7 @@ void Stories::toggleHidden(
 void Stories::sendMarkAsReadRequest(
 		not_null<PeerData*> peer,
 		StoryId tillId) {
+	return;
 	const auto peerId = peer->id;
 	_markReadRequests.emplace(peerId);
 	const auto finish = [=] {

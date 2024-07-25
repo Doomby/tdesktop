@@ -6210,8 +6210,8 @@ void HistoryWidget::updateHistoryGeometry(
 		newScrollTop = countInitialScrollTop();
 		_historyInited = true;
 		_scrollToAnimation.stop();
-	} else if (wasAtBottom && !loadedDown && !_history->unreadBar()) {
-		newScrollTop = countAutomaticScrollTop();
+	// } else if (wasAtBottom && !loadedDown && !_history->unreadBar()) {
+	// 	newScrollTop = countAutomaticScrollTop();
 	} else {
 		newScrollTop = std::min(
 			_list->historyScrollTop(),
