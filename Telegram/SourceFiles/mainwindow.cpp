@@ -511,6 +511,7 @@ void MainWindow::themeUpdated(const Window::Theme::BackgroundUpdate &data) {
 }
 
 bool MainWindow::markingAsRead() const {
+	return false;
 	return _main
 		&& !_main->isHidden()
 		&& !_main->animatingShow()

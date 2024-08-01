@@ -567,7 +567,7 @@ HistoryItem::HistoryItem(
 	} else if ((isPost() && !isScheduled())
 		|| (original->originalSender()
 			&& original->originalSender()->isChannel())) {
-		config.viewsCount = 1;
+		config.viewsCount = fwdViewsCount;
 	}
 
 	const auto mediaOriginal = original->media();
@@ -2257,7 +2257,7 @@ bool HistoryItem::forbidsForward() const {
 
 bool HistoryItem::forbidsSaving() const {
 	if (forbidsForward()) {
-		return true;
+		return false;
 	} else if (const auto invoice = _media ? _media->invoice() : nullptr) {
 		return HasExtendedMedia(*invoice);
 	}

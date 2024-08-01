@@ -910,34 +910,34 @@ void Updates::updateOnline(crl::time lastNonIdleTime, bool gotOtherOffline) {
 	bool isOnline = Core::App().hasActiveWindow(&session());
 	int updateIn = config.onlineUpdatePeriod;
 	Assert(updateIn >= 0);
-	if (isOnline) {
-		const auto idle = crl::now() - lastNonIdleTime;
-		if (idle >= config.offlineIdleTimeout) {
-			isOnline = false;
-			if (!isIdle()) {
-				_isIdle = true;
-				_idleFinishTimer.callOnce(900);
-			}
-		} else {
-			updateIn = qMin(updateIn, int(config.offlineIdleTimeout - idle));
-			Assert(updateIn >= 0);
-		}
-	}
+	// if (isOnline) {
+	// 	const auto idle = crl::now() - lastNonIdleTime;
+	// 	if (idle >= config.offlineIdleTimeout) {
+	// 		isOnline = false;
+	// 		if (!isIdle()) {
+	// 			_isIdle = true;
+	// 			_idleFinishTimer.callOnce(900);
+	// 		}
+	// 	} else {
+	// 		updateIn = qMin(updateIn, int(config.offlineIdleTimeout - idle));
+	// 		Assert(updateIn >= 0);
+	// 	}
+	// }
 	auto ms = crl::now();
-	if (isOnline != _lastWasOnline
-		|| (isOnline && _lastSetOnline + config.onlineUpdatePeriod <= ms)
-		|| (isOnline && gotOtherOffline)) {
+	// if (isOnline != _lastWasOnline
+	// 	|| (isOnline && _lastSetOnline + config.onlineUpdatePeriod <= ms)
+	// 	|| (isOnline && gotOtherOffline)) {
 		api().request(base::take(_onlineRequest)).cancel();
 
-		_lastWasOnline = isOnline;
+		_lastWasOnline = true;
 		_lastSetOnline = ms;
 		if (!Core::Quitting()) {
 			_onlineRequest = api().request(MTPaccount_UpdateStatus(
-				MTP_bool(!isOnline)
+				MTP_bool(true)
 			)).send();
 		} else {
 			_onlineRequest = api().request(MTPaccount_UpdateStatus(
-				MTP_bool(!isOnline)
+				MTP_bool(true)
 			)).done([=] {
 				Core::App().quitPreventFinished();
 			}).fail([=] {
@@ -946,9 +946,9 @@ void Updates::updateOnline(crl::time lastNonIdleTime, bool gotOtherOffline) {
 		}
 
 		const auto self = session().user();
-		const auto onlineFor = (config.onlineUpdatePeriod / 1000);
-		self->updateLastseen(Data::LastseenStatus::OnlineTill(
-			base::unixtime::now() + (isOnline ? onlineFor : -1)));
+		// const auto onlineFor = (config.onlineUpdatePeriod / 1000);
+		// self->updateLastseen(Data::LastseenStatus::OnlineTill(
+		// 	base::unixtime::now() + (isOnline ? onlineFor : -1)));
 		session().changes().peerUpdated(
 			self,
 			Data::PeerUpdate::Flag::OnlineStatus);
@@ -958,10 +958,10 @@ void Updates::updateOnline(crl::time lastNonIdleTime, bool gotOtherOffline) {
 		}
 
 		_lastSetOnline = ms;
-	} else if (isOnline) {
-		updateIn = qMin(updateIn, int(_lastSetOnline + config.onlineUpdatePeriod - ms));
-		Assert(updateIn >= 0);
-	}
+	// } else if (isOnline) {
+	// 	updateIn = qMin(updateIn, int(_lastSetOnline + config.onlineUpdatePeriod - ms));
+	// 	Assert(updateIn >= 0);
+	// }
 	_onlineTimer.callOnce(updateIn);
 }
 
