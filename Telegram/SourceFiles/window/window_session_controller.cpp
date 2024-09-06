@@ -73,6 +73,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/boxes/collectible_info_box.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/dynamic_thumbnails.h"
+#include "ui/ui_utility.h"
 #include "mainwidget.h"
 #include "main/main_app_config.h"
 #include "main/main_domain.h"
@@ -2487,11 +2488,11 @@ void SessionController::showMessage(
 					std::make_shared<HistoryView::ScheduledMemento>(
 						item->history()),
 					params);
+				if (params.activation != anim::activation::background) {
+					controller->window().activate();
+				}
 			} else {
 				controller->content()->showMessage(item, params);
-			}
-			if (params.activation != anim::activation::background) {
-				controller->window().activate();
 			}
 		});
 }
