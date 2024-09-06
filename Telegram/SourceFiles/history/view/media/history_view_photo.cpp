@@ -30,6 +30,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/cached_round_corners.h"
 #include "ui/painter.h"
 #include "ui/power_saving.h"
+#include "ui/ui_utility.h"
 #include "data/data_session.h"
 #include "data/data_stories.h"
 #include "data/data_streaming.h"
@@ -258,6 +259,7 @@ QSize Photo::countCurrentSize(int newWidth) {
 	const auto enlargeOuter = 2 * st::historyPageEnlargeSkip + enlargeInner;
 	const auto showEnlarge = (_parent->media() != this)
 		&& _parent->data()->media()
+		&& !_parent->data()->isSponsored()
 		&& _parent->data()->media()->webpage()
 		&& _parent->data()->media()->webpage()->suggestEnlargePhoto()
 		&& (newWidth >= enlargeOuter)

@@ -3280,7 +3280,6 @@ void ApiWrap::forwardMessages(
 		histories.readInbox(history);
 	}
 	const auto sendAs = action.options.sendAs;
-	const auto anonymousPost = peer->amAnonymous();
 	const auto silentPost = ShouldSendSilent(peer, action.options);
 
 	using SendFlag = MTPmessages_ForwardMessages::Flag;
@@ -3372,23 +3371,14 @@ void ApiWrap::forwardMessages(
 			const auto newId = FullMsgId(
 				peer->id,
 				_session->data().nextLocalMessageId());
-			const auto self = _session->user();
-			const auto messageFromId = sendAs
-				? sendAs->id
-				: anonymousPost
-				? PeerId(0)
-				: self->id;
-			const auto messagePostAuthor = peer->isBroadcast()
-				? self->name()
-				: QString();
 			history->addNewLocalMessage({
 				.id = newId.msg,
 				.flags = flags,
-				.from = messageFromId,
+				.from = NewMessageFromId(action),
 				.replyTo = { .topicRootId = topMsgId },
-				.date = HistoryItem::NewMessageDate(action.options),
+				.date = NewMessageDate(action.options),
 				.shortcutId = action.options.shortcutId,
-				.postAuthor = messagePostAuthor,
+				.postAuthor = NewMessagePostAuthor(action),
 
 				// forwarded messages don't have effects
 				//.effectId = action.options.effectId,
@@ -3463,8 +3453,6 @@ void ApiWrap::sendSharedContact(
 	const auto newId = FullMsgId(
 		peer->id,
 		_session->data().nextLocalMessageId());
-	const auto anonymousPost = peer->amAnonymous();
-
 	auto flags = NewMessageFlags(peer);
 	if (action.replyTo) {
 		flags |= MessageFlag::HasReplyInfo;
@@ -3476,22 +3464,14 @@ void ApiWrap::sendSharedContact(
 	if (action.options.shortcutId) {
 		flags |= MessageFlag::ShortcutMessage;
 	}
-	const auto messageFromId = action.options.sendAs
-		? action.options.sendAs->id
-		: anonymousPost
-		? PeerId()
-		: _session->userPeerId();
-	const auto messagePostAuthor = peer->isBroadcast()
-		? _session->user()->name()
-		: QString();
 	const auto item = history->addNewLocalMessage({
 		.id = newId.msg,
 		.flags = flags,
-		.from = messageFromId,
+		.from = NewMessageFromId(action),
 		.replyTo = action.replyTo,
-		.date = HistoryItem::NewMessageDate(action.options),
+		.date = NewMessageDate(action.options),
 		.shortcutId = action.options.shortcutId,
-		.postAuthor = messagePostAuthor,
+		.postAuthor = NewMessagePostAuthor(action),
 		.effectId = action.options.effectId,
 	}, TextWithEntities(), MTP_messageMediaContact(
 		MTP_string(phone),
@@ -3777,7 +3757,6 @@ void ApiWrap::sendMessage(MessageToSend &&message) {
 					MTP_string(fields.url),
 					MTP_int(page->pendingTill)));
 		}
-		const auto anonymousPost = peer->amAnonymous();
 		const auto silentPost = ShouldSendSilent(peer, action.options);
 		FillMessagePostFlags(action, peer, flags);
 		if ((exactWebPage && !ignoreWebPage && message.webPage.invert)
@@ -3805,18 +3784,10 @@ void ApiWrap::sendMessage(MessageToSend &&message) {
 			history->startSavingCloudDraft(draftTopicRootId);
 		}
 		const auto sendAs = action.options.sendAs;
-		const auto messageFromId = sendAs
-			? sendAs->id
-			: anonymousPost
-			? PeerId()
-			: _session->userPeerId();
 		if (sendAs) {
 			sendFlags |= MTPmessages_SendMessage::Flag::f_send_as;
 			mediaFlags |= MTPmessages_SendMedia::Flag::f_send_as;
 		}
-		const auto messagePostAuthor = peer->isBroadcast()
-			? _session->user()->name()
-			: QString();
 		if (action.options.scheduled) {
 			flags |= MessageFlag::IsOrWasScheduled;
 			sendFlags |= MTPmessages_SendMessage::Flag::f_schedule_date;
@@ -3834,11 +3805,11 @@ void ApiWrap::sendMessage(MessageToSend &&message) {
 		lastMessage = history->addNewLocalMessage({
 			.id = newId.msg,
 			.flags = flags,
-			.from = messageFromId,
+			.from = NewMessageFromId(action),
 			.replyTo = action.replyTo,
-			.date = HistoryItem::NewMessageDate(action.options),
+			.date = NewMessageDate(action.options),
 			.shortcutId = action.options.shortcutId,
-			.postAuthor = messagePostAuthor,
+			.postAuthor = NewMessagePostAuthor(action),
 			.effectId = action.options.effectId,
 		}, sending, media);
 		const auto done = [=](
@@ -3984,7 +3955,6 @@ void ApiWrap::sendInlineResult(
 		flags |= MessageFlag::HasReplyInfo;
 		sendFlags |= SendFlag::f_reply_to;
 	}
-	const auto anonymousPost = peer->amAnonymous();
 	const auto silentPost = ShouldSendSilent(peer, action.options);
 	FillMessagePostFlags(action, peer, flags);
 	if (silentPost) {
@@ -4003,30 +3973,22 @@ void ApiWrap::sendInlineResult(
 	}
 
 	const auto sendAs = action.options.sendAs;
-	const auto messageFromId = sendAs
-		? sendAs->id
-		: anonymousPost ? PeerId()
-		: _session->userPeerId();
 	if (sendAs) {
 		sendFlags |= MTPmessages_SendInlineBotResult::Flag::f_send_as;
 	}
-	const auto messagePostAuthor = peer->isBroadcast()
-		? _session->user()->name()
-		: QString();
-
 	_session->data().registerMessageRandomId(randomId, newId);
 
 	data->addToHistory(history, {
 		.id = newId.msg,
 		.flags = flags,
-		.from = messageFromId,
+		.from = NewMessageFromId(action),
 		.replyTo = action.replyTo,
-		.date = HistoryItem::NewMessageDate(action.options),
+		.date = NewMessageDate(action.options),
 		.shortcutId = action.options.shortcutId,
 		.viaBotId = ((bot && !action.options.hideViaBot)
 			? peerToUser(bot->id)
 			: UserId()),
-		.postAuthor = messagePostAuthor,
+		.postAuthor = NewMessagePostAuthor(action),
 	});
 
 	history->clearCloudDraft(topicRootId);
@@ -4195,8 +4157,10 @@ void ApiWrap::sendMediaWithRandomId(
 			Data::Histories::ReplyToPlaceholder(),
 			(options.price
 				? MTPInputMedia(MTP_inputMediaPaidMedia(
+					MTP_flags(0),
 					MTP_long(options.price),
-					MTP_vector<MTPInputMedia>(1, media)))
+					MTP_vector<MTPInputMedia>(1, media),
+					MTPstring()))
 				: media),
 			MTP_string(caption.text),
 			MTP_long(randomId),
@@ -4267,8 +4231,10 @@ void ApiWrap::sendMultiPaidMedia(
 			peer->input,
 			Data::Histories::ReplyToPlaceholder(),
 			MTP_inputMediaPaidMedia(
+				MTP_flags(0),
 				MTP_long(options.price),
-				MTP_vector<MTPInputMedia>(std::move(medias))),
+				MTP_vector<MTPInputMedia>(std::move(medias)),
+				MTPstring()),
 			MTP_string(caption.text),
 			MTP_long(randomId),
 			MTPReplyMarkup(),

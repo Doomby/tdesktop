@@ -8,9 +8,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "payments/payments_reaction_process.h"
 
 #include "api/api_credits.h"
+#include "api/api_global_privacy.h"
+#include "apiwrap.h"
 #include "boxes/send_credits_box.h" // CreditsEmojiSmall.
 #include "core/ui_integration.h" // MarkedTextContext.
 #include "data/components/credits.h"
+#include "data/data_channel.h"
 #include "data/data_message_reactions.h"
 #include "data/data_session.h"
 #include "data/data_user.h"
@@ -42,7 +45,7 @@ void TryAddingPaidReaction(
 		FullMsgId itemId,
 		base::weak_ptr<HistoryView::Element> weakView,
 		int count,
-		bool anonymous,
+		std::optional<bool> anonymous,
 		std::shared_ptr<Ui::Show> show,
 		Fn<void(bool)> finished) {
 	const auto checkItem = [=] {
@@ -102,7 +105,7 @@ void TryAddingPaidReaction(
 		not_null<HistoryItem*> item,
 		HistoryView::Element *view,
 		int count,
-		bool anonymous,
+		std::optional<bool> anonymous,
 		std::shared_ptr<Ui::Show> show,
 		Fn<void(bool)> finished) {
 	TryAddingPaidReaction(
@@ -120,7 +123,8 @@ void ShowPaidReactionDetails(
 		not_null<HistoryItem*> item,
 		HistoryView::Element *view,
 		HistoryReactionSource source) {
-	Expects(item->history()->peer->isBroadcast());
+	Expects(item->history()->peer->isBroadcast()
+		|| item->isDiscussionPost());
 
 	const auto show = controller->uiShow();
 	const auto itemId = item->fullId();
@@ -226,14 +230,19 @@ void ShowPaidReactionDetails(
 		add(entry);
 		entry.peer = nullptr;
 		add(entry);
+		if (session->api().globalPrivacy().paidReactionAnonymousCurrent()) {
+			std::swap(top.front(), top.back());
+		}
 	}
 	ranges::sort(top, ranges::greater(), &Ui::PaidReactionTop::count);
 
+	const auto linked = item->discussionPostOriginalSender();
+	const auto channel = (linked ? linked : item->history()->peer.get());
 	state->selectBox = show->show(Ui::MakePaidReactionBox({
 		.chosen = chosen,
 		.max = max,
 		.top = std::move(top),
-		.channel = item->history()->peer->name(),
+		.channel = channel->name(),
 		.submit = std::move(submitText),
 		.balanceValue = session->credits().balanceValue(),
 		.send = [=](int count, bool anonymous) {
