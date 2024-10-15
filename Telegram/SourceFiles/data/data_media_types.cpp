@@ -579,6 +579,10 @@ const Invoice *Media::invoice() const {
 	return nullptr;
 }
 
+const GiftCode *Media::gift() const {
+	return nullptr;
+}
+
 CloudImage *Media::location() const {
 	return nullptr;
 }
@@ -1726,6 +1730,10 @@ MediaWebPageFlags MediaWebPage::webpageFlags() const {
 	return _flags;
 }
 
+Storage::SharedMediaTypesMask MediaWebPage::sharedMediaTypes() const {
+	return Storage::SharedMediaType::Link;
+}
+
 bool MediaWebPage::hasReplyPreview() const {
 	if (const auto document = MediaWebPage::document()) {
 		return document->hasThumbnail()
@@ -2327,8 +2335,8 @@ not_null<PeerData*> MediaGiftBox::from() const {
 	return _from;
 }
 
-const GiftCode &MediaGiftBox::data() const {
-	return _data;
+const GiftCode *MediaGiftBox::gift() const {
+	return &_data;
 }
 
 TextWithEntities MediaGiftBox::notificationText() const {

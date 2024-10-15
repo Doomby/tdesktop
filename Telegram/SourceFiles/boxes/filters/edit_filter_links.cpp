@@ -337,12 +337,13 @@ PaintRoundImageCallback ChatRow::generatePaintUserpicCallback(
 			int y,
 			int outerWidth,
 			int size) mutable {
+		using namespace Ui;
 		if (forceRound && peer->isForum()) {
 			ForceRoundUserpicCallback(peer)(p, x, y, outerWidth, size);
 		} else if (saved) {
-			Ui::EmptyUserpic::PaintSavedMessages(p, x, y, outerWidth, size);
+			EmptyUserpic::PaintSavedMessages(p, x, y, outerWidth, size);
 		} else if (replies) {
-			Ui::EmptyUserpic::PaintRepliesMessages(p, x, y, outerWidth, size);
+			EmptyUserpic::PaintRepliesMessages(p, x, y, outerWidth, size);
 		} else {
 			peer->paintUserpicLeft(p, userpic, x, y, outerWidth, size);
 		}
@@ -582,6 +583,7 @@ void LinkController::addLinkBlock(not_null<Ui::VerticalLayout*> container) {
 	});
 	const auto getLinkQr = crl::guard(weak, [=] {
 		delegate()->peerListUiShow()->showBox(InviteLinkQrBox(
+			nullptr,
 			link,
 			tr::lng_group_invite_qr_title(),
 			tr::lng_filters_link_qr_about()));
@@ -890,6 +892,7 @@ base::unique_qptr<Ui::PopupMenu> LinksController::createRowContextMenu(
 	};
 	const auto getLinkQr = [=] {
 		delegate()->peerListUiShow()->showBox(InviteLinkQrBox(
+			nullptr,
 			link,
 			tr::lng_group_invite_qr_title(),
 			tr::lng_filters_link_qr_about()));
@@ -1114,7 +1117,7 @@ QString FilterChatStatusText(not_null<PeerData*> peer) {
 				? tr::lng_chat_status_subscribers
 				: tr::lng_chat_status_members)(
 					tr::now,
-					lt_count,
+					lt_count_decimal,
 					channel->membersCount());
 		}
 	}
