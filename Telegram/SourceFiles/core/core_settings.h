@@ -238,6 +238,12 @@ public:
 	void setIncludeMutedCounter(bool value) {
 		_includeMutedCounter = value;
 	}
+	[[nodiscard]] bool includeMutedCounterFolders() const {
+		return _includeMutedCounterFolders;
+	}
+	void setIncludeMutedCounterFolders(bool value) {
+		_includeMutedCounterFolders = value;
+	}
 	[[nodiscard]] bool countUnreadMessages() const {
 		return _countUnreadMessages;
 	}
@@ -909,6 +915,10 @@ public:
 		_tonsiteStorageToken = value;
 	}
 
+	[[nodiscard]] int ivZoom() const;
+	[[nodiscard]] rpl::producer<int> ivZoomValue() const;
+	void setIvZoom(int value);
+
 	[[nodiscard]] static bool ThirdColumnByDefault();
 	[[nodiscard]] static float64 DefaultDialogsWidthRatio();
 
@@ -951,6 +961,7 @@ private:
 	int _notificationsCount = 3;
 	ScreenCorner _notificationsCorner = ScreenCorner::BottomRight;
 	bool _includeMutedCounter = true;
+	bool _includeMutedCounterFolders = true;
 	bool _countUnreadMessages = true;
 	rpl::variable<bool> _notifyAboutPinned = true;
 	int _autoLock = 3600;
@@ -1043,6 +1054,7 @@ private:
 	bool _systemUnlockEnabled = false;
 	std::optional<bool> _weatherInCelsius;
 	QByteArray _tonsiteStorageToken;
+	rpl::variable<int> _ivZoom = 100;
 
 	bool _tabbedReplacedWithInfo = false; // per-window
 	rpl::event_stream<bool> _tabbedReplacedWithInfoValue; // per-window
