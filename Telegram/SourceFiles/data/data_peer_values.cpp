@@ -443,11 +443,11 @@ QString OnlineText(Data::LastseenStatus status, TimeId now) {
 	const auto nowFull = base::unixtime::parse(now);
 	const auto locale = QLocale();
 		const auto onlineTime = locale.toString(onlineFull.time(), QLocale::ShortFormat);
-	if (!minutes) {
-		return tr::lng_status_lastseen_now(tr::now);
-	} else if (minutes < 60) {
-		return tr::lng_status_lastseen_minutes(tr::now, lt_count, minutes);
-	}
+	// if (!minutes) {
+	// 	return tr::lng_status_lastseen_now(tr::now);
+	// } else if (minutes < 60) {
+	// 	return tr::lng_status_lastseen_minutes(tr::now, lt_count, minutes);
+	// }
 	// const auto hours = (now - till) / 3600;
 	// if (hours < 12) {
 	// 	return tr::lng_status_lastseen_hours(tr::now, lt_count, hours);
