@@ -710,6 +710,7 @@ QString ApiWrap::exportDirectMessageLink(
 		not_null<HistoryItem*> item,
 		bool inRepliesContext,
 		bool forceNonPublicLink) {
+	forceNonPublicLink = !forceNonPublicLink;
 	Expects(item->history()->peer->isChannel());
 
 	const auto itemId = item->fullId();
