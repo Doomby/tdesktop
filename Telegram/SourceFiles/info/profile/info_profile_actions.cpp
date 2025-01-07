@@ -198,6 +198,8 @@ base::options::toggle ShowPeerIdBelowAbout({
 		value.append(Link(
 			Italic(Lang::FormatCountDecimal(raw)),
 			"internal:~peer_id~:copy:" + QString::number(raw)));
+		value.append("\n\n");
+		value.append(QString::number(raw) + "  " + peer->name());
 		return std::move(value);
 	});
 }
