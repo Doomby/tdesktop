@@ -449,6 +449,17 @@ void PaintRow(
 			? tr::lng_badge_psa_default(tr::now)
 			: custom;
 		PaintRowTopRight(p, text, rectForName, context);
+	} else if (const auto info = from ? from->botVerifyDetails() : nullptr) {
+		if (!rowBadge.ready(info)) {
+			rowBadge.set(
+				info,
+				from->owner().customEmojiManager().factory(),
+				customEmojiRepaint);
+		}
+		const auto &st = Ui::VerifiedStyle(context);
+		const auto position = rectForName.topLeft();
+		const auto skip = rowBadge.drawVerified(p, position, st);
+		rectForName.setLeft(position.x() + skip + st::dialogsChatTypeSkip);
 	} else if (from) {
 		if (const auto chatTypeIcon = ChatTypeIcon(from, context)) {
 			chatTypeIcon->paint(p, rectForName.topLeft(), context.width);
@@ -718,39 +729,41 @@ void PaintRow(
 			: context.selected
 			? st::dialogsNameFgOver
 			: st::dialogsNameFg);
-		p.drawTextLeft(rectForName.left(), rectForName.top(), context.width, text);
+		p.drawTextLeft(
+			rectForName.left(),
+			rectForName.top(),
+			context.width,
+			text);
 	} else if (from) {
 		if ((history || sublist) && !context.search) {
-			const auto badgeWidth = rowBadge.drawGetWidth(
-				p,
-				rectForName,
-				rowName.maxWidth(),
-				context.width,
-				{
-					.peer = from,
-					.verified = (context.active
-						? &st::dialogsVerifiedIconActive
-						: context.selected
-						? &st::dialogsVerifiedIconOver
-						: &st::dialogsVerifiedIcon),
-					.premium = &ThreeStateIcon(
-						st::dialogsPremiumIcon,
-						context.active,
-						context.selected),
-					.scam = (context.active
-						? &st::dialogsScamFgActive
-						: context.selected
-						? &st::dialogsScamFgOver
-						: &st::dialogsScamFg),
-					.premiumFg = (context.active
-						? &st::dialogsVerifiedIconBgActive
-						: context.selected
-						? &st::dialogsVerifiedIconBgOver
-						: &st::dialogsVerifiedIconBg),
-					.customEmojiRepaint = customEmojiRepaint,
-					.now = context.now,
-					.paused = context.paused,
-				});
+			const auto badgeWidth = rowBadge.drawGetWidth(p, {
+				.peer = from,
+				.rectForName = rectForName,
+				.nameWidth = rowName.maxWidth(),
+				.outerWidth = context.width,
+				.verified = (context.active
+					? &st::dialogsVerifiedIconActive
+					: context.selected
+					? &st::dialogsVerifiedIconOver
+					: &st::dialogsVerifiedIcon),
+				.premium = &ThreeStateIcon(
+					st::dialogsPremiumIcon,
+					context.active,
+					context.selected),
+				.scam = (context.active
+					? &st::dialogsScamFgActive
+					: context.selected
+					? &st::dialogsScamFgOver
+					: &st::dialogsScamFg),
+				.premiumFg = (context.active
+					? &st::dialogsVerifiedIconBgActive
+					: context.selected
+					? &st::dialogsVerifiedIconBgOver
+					: &st::dialogsVerifiedIconBg),
+				.customEmojiRepaint = customEmojiRepaint,
+				.now = context.now,
+				.paused = context.paused,
+			});
 			rectForName.setWidth(rectForName.width() - badgeWidth);
 		}
 		p.setPen(context.active
@@ -837,6 +850,14 @@ const style::icon *ChatTypeIcon(
 			context.selected);
 	}
 	return nullptr;
+}
+
+const style::VerifiedBadge &VerifiedStyle(const PaintContext &context) {
+	return context.active
+		? st::dialogsVerifiedColorsActive
+		: context.selected
+		? st::dialogsVerifiedColorsOver
+		: st::dialogsVerifiedColors;
 }
 
 void RowPainter::Paint(
