@@ -1773,7 +1773,7 @@ void ApiWrap::joinChannel(not_null<ChannelData*> channel) {
 		_channelAmInRequests.emplace(channel, requestId);
 
 		using Flag = ChannelDataFlag;
-		chatParticipants().loadSimilarChannels(channel);
+		chatParticipants().loadSimilarPeers(channel);
 		channel->setFlags(channel->flags() | Flag::SimilarExpanded);
 	}
 }
@@ -3379,7 +3379,8 @@ void ApiWrap::forwardMessages(
 				MTP_int(topMsgId),
 				MTP_int(action.options.scheduled),
 				(sendAs ? sendAs->input : MTP_inputPeerEmpty()),
-				Data::ShortcutIdToMTP(_session, action.options.shortcutId)
+				Data::ShortcutIdToMTP(_session, action.options.shortcutId),
+				MTPint() // video_timestamp
 			)).done([=](const MTPUpdates &result) {
 				if (!scheduled) {
 					this->updates().checkForSentToScheduled(result);
@@ -4147,7 +4148,9 @@ void ApiWrap::uploadAlbumMedia(
 					fields.vid(),
 					fields.vaccess_hash(),
 					fields.vfile_reference()),
+				MTPInputPhoto(), // video_cover
 				MTP_int(data.vttl_seconds().value_or_empty()),
+				MTPint(), // video_timestamp
 				MTPstring()); // query
 			sendAlbumWithUploaded(item, groupId, media);
 		} break;
