@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_replies_section.h"
 
 #include "history/view/controls/history_view_compose_controls.h"
+#include "history/view/controls/history_view_compose_search.h"
 #include "history/view/controls/history_view_draft_options.h"
 #include "history/view/history_view_top_bar_widget.h"
 #include "history/view/history_view_schedule_box.h"
@@ -291,7 +292,9 @@ RepliesWidget::RepliesWidget(
 	}, _topBar->lifetime());
 	_topBar->searchRequest(
 	) | rpl::start_with_next([=] {
-		searchInTopic();
+		if (!preventsClose(crl::guard(this, [=]{ searchInTopic(); }))) {
+			searchInTopic();
+		}
 	}, _topBar->lifetime());
 
 	controller->adaptive().value(
@@ -338,6 +341,9 @@ RepliesWidget::RepliesWidget(
 		} else if (!_joinGroup && canSendReply) {
 			replyToMessage(to);
 			_composeControls->focus();
+			if (_composeSearch) {
+				_composeSearch->hideAnimated();
+			}
 		}
 	}, _inner->lifetime());
 
@@ -727,8 +733,8 @@ void RepliesWidget::setupComposeControls() {
 	}, lifetime());
 
 	_composeControls->sendVoiceRequests(
-	) | rpl::start_with_next([=](ComposeControls::VoiceToSend &&data) {
-		sendVoice(std::move(data));
+	) | rpl::start_with_next([=](const ComposeControls::VoiceToSend &data) {
+		sendVoice(data);
 	}, lifetime());
 
 	_composeControls->sendCommandRequests(
@@ -1064,25 +1070,59 @@ void RepliesWidget::sendingFilesConfirmed(
 		std::move(list),
 		way,
 		_history->peer->slowmodeApplied());
-	const auto type = way.sendImagesAsPhotos()
-		? SendMediaType::Photo
-		: SendMediaType::File;
+	auto bundle = PrepareFilesBundle(
+		std::move(groups),
+		way,
+		std::move(caption),
+		ctrlShiftEnter);
+	sendingFilesConfirmed(std::move(bundle), options);
+}
+
+bool RepliesWidget::checkSendPayment(
+		int messagesCount,
+		int starsApproved,
+		Fn<void(int)> withPaymentApproved) {
+	return _sendPayment.check(
+		controller(),
+		_history->peer,
+		messagesCount,
+		starsApproved,
+		std::move(withPaymentApproved));
+}
+
+void RepliesWidget::sendingFilesConfirmed(
+		std::shared_ptr<Ui::PreparedBundle> bundle,
+		Api::SendOptions options) {
+	const auto withPaymentApproved = [=](int approved) {
+		auto copy = options;
+		copy.starsApproved = approved;
+		sendingFilesConfirmed(bundle, copy);
+	};
+	const auto checked = checkSendPayment(
+		bundle->totalCount,
+		options.starsApproved,
+		withPaymentApproved);
+	if (!checked) {
+		return;
+	}
+
+	const auto compress = bundle->way.sendImagesAsPhotos();
+	const auto type = compress ? SendMediaType::Photo : SendMediaType::File;
 	auto action = prepareSendAction(options);
 	action.clearDraft = false;
-	if ((groups.size() != 1 || !groups.front().sentWithCaption())
-		&& !caption.text.isEmpty()) {
+	if (bundle->sendComment) {
 		auto message = Api::MessageToSend(action);
-		message.textWithTags = base::take(caption);
+		message.textWithTags = base::take(bundle->caption);
 		session().api().sendMessage(std::move(message));
 	}
-	for (auto &group : groups) {
+	for (auto &group : bundle->groups) {
 		const auto album = (group.type != Ui::AlbumType::None)
 			? std::make_shared<SendingAlbum>()
 			: nullptr;
 		session().api().sendFiles(
 			std::move(group.list),
 			type,
-			base::take(caption),
+			base::take(bundle->caption),
 			album,
 			action);
 	}
@@ -1221,7 +1261,20 @@ void RepliesWidget::send() {
 	send({});
 }
 
-void RepliesWidget::sendVoice(ComposeControls::VoiceToSend &&data) {
+void RepliesWidget::sendVoice(const ComposeControls::VoiceToSend &data) {
+	const auto withPaymentApproved = [=](int approved) {
+		auto copy = data;
+		copy.options.starsApproved = approved;
+		sendVoice(copy);
+	};
+	const auto checked = checkSendPayment(
+		1,
+		data.options.starsApproved,
+		withPaymentApproved);
+	if (!checked) {
+		return;
+	}
+
 	auto action = prepareSendAction(data.options);
 	session().api().sendVoiceMessage(
 		data.bytes,
@@ -1248,19 +1301,32 @@ void RepliesWidget::send(Api::SendOptions options) {
 	message.textWithTags = _composeControls->getTextWithAppliedMarkdown();
 	message.webPage = _composeControls->webPageDraft();
 
-	const auto error = GetErrorForSending(
-		_history->peer,
-		{
-			.topicRootId = _topic ? _topic->rootId() : MsgId(0),
-			.forward = &_composeControls->forwardItems(),
-			.text = &message.textWithTags,
-			.ignoreSlowmodeCountdown = (options.scheduled != 0),
-		});
+	auto request = SendingErrorRequest{
+		.topicRootId = _topic ? _topic->rootId() : MsgId(0),
+		.forward = &_composeControls->forwardItems(),
+		.text = &message.textWithTags,
+		.ignoreSlowmodeCountdown = (options.scheduled != 0),
+	};
+	request.messagesCount = ComputeSendingMessagesCount(_history, request);
+	const auto error = GetErrorForSending(_history->peer, request);
 	if (error) {
 		Data::ShowSendErrorToast(controller(), _history->peer, error);
 		return;
 	}
-
+	if (!options.scheduled) {
+		const auto withPaymentApproved = [=](int approved) {
+			auto copy = options;
+			copy.starsApproved = approved;
+			send(copy);
+		};
+		const auto checked = checkSendPayment(
+			request.messagesCount,
+			options.starsApproved,
+			withPaymentApproved);
+		if (!checked) {
+			return;
+		}
+	}
 	session().api().sendMessage(std::move(message));
 
 	_composeControls->clear();
@@ -1414,6 +1480,18 @@ bool RepliesWidget::sendExistingDocument(
 		|| ShowSendPremiumError(controller(), document)) {
 		return false;
 	}
+	const auto withPaymentApproved = [=](int approved) {
+		auto copy = messageToSend;
+		copy.action.options.starsApproved = approved;
+		sendExistingDocument(document, std::move(copy), localId);
+	};
+	const auto checked = checkSendPayment(
+		1,
+		messageToSend.action.options.starsApproved,
+		withPaymentApproved);
+	if (!checked) {
+		return false;
+	}
 
 	Api::SendExistingDocument(
 		std::move(messageToSend),
@@ -1442,6 +1520,19 @@ bool RepliesWidget::sendExistingPhoto(
 		return false;
 	}
 
+	const auto withPaymentApproved = [=](int approved) {
+		auto copy = options;
+		copy.starsApproved = approved;
+		sendExistingPhoto(photo, copy);
+	};
+	const auto checked = checkSendPayment(
+		1,
+		options.starsApproved,
+		withPaymentApproved);
+	if (!checked) {
+		return false;
+	}
+
 	Api::SendExistingPhoto(
 		Api::MessageToSend(prepareSendAction(options)),
 		photo);
@@ -1452,13 +1543,13 @@ bool RepliesWidget::sendExistingPhoto(
 }
 
 void RepliesWidget::sendInlineResult(
-		not_null<InlineBots::Result*> result,
+		std::shared_ptr<InlineBots::Result> result,
 		not_null<UserData*> bot) {
 	if (const auto error = result->getErrorOnSend(_history)) {
 		Data::ShowSendErrorToast(controller(), _history->peer, error);
 		return;
 	}
-	sendInlineResult(result, bot, {}, std::nullopt);
+	sendInlineResult(std::move(result), bot, {}, std::nullopt);
 	//const auto callback = [=](Api::SendOptions options) {
 	//	sendInlineResult(result, bot, options);
 	//};
@@ -1468,13 +1559,30 @@ void RepliesWidget::sendInlineResult(
 }
 
 void RepliesWidget::sendInlineResult(
-		not_null<InlineBots::Result*> result,
+		std::shared_ptr<InlineBots::Result> result,
 		not_null<UserData*> bot,
 		Api::SendOptions options,
 		std::optional<MsgId> localMessageId) {
+	const auto withPaymentApproved = [=](int approved) {
+		auto copy = options;
+		copy.starsApproved = approved;
+		sendInlineResult(result, bot, copy, localMessageId);
+	};
+	const auto checked = checkSendPayment(
+		1,
+		options.starsApproved,
+		withPaymentApproved);
+	if (!checked) {
+		return;
+	}
+
 	auto action = prepareSendAction(options);
 	action.generateLocal = true;
-	session().api().sendInlineResult(bot, result, action, localMessageId);
+	session().api().sendInlineResult(
+		bot,
+		result.get(),
+		action,
+		localMessageId);
 
 	_composeControls->clear();
 	//_saveDraftText = true;
@@ -1497,7 +1605,9 @@ void RepliesWidget::sendInlineResult(
 
 SendMenu::Details RepliesWidget::sendMenuDetails() const {
 	using Type = SendMenu::Type;
-	const auto type = _topic ? Type::Scheduled : Type::SilentOnly;
+	const auto type = (_topic && !_history->peer->starsPerMessageChecked())
+		? Type::Scheduled
+		: Type::SilentOnly;
 	return SendMenu::Details{ .type = type };
 }
 
@@ -2005,7 +2115,11 @@ void RepliesWidget::checkActivation() {
 }
 
 void RepliesWidget::doSetInnerFocus() {
-	if (!_inner->getSelectedText().rich.text.isEmpty()
+	if (_composeSearch
+		&& _inner->getSelectedText().rich.text.isEmpty()
+		&& _inner->getSelectedItems().empty()) {
+		_composeSearch->setInnerFocus();
+	} else if (!_inner->getSelectedText().rich.text.isEmpty()
 		|| !_inner->getSelectedItems().empty()
 		|| !_composeControls->focus()) {
 		_inner->setFocus();
@@ -2441,6 +2555,16 @@ bool RepliesWidget::listScrollTo(int top, bool syntetic) {
 }
 
 void RepliesWidget::listCancelRequest() {
+	if (_composeSearch) {
+		if (_inner &&
+			(!_inner->getSelectedItems().empty()
+				|| !_inner->getSelectedText().rich.text.isEmpty())) {
+			clearSelected();
+		} else {
+			_composeSearch->hideAnimated();
+		}
+		return;
+	}
 	if (_inner && !_inner->getSelectedItems().empty()) {
 		clearSelected();
 		return;
@@ -2504,6 +2628,9 @@ void RepliesWidget::listSelectionChanged(SelectedItems &&items) {
 		}
 	}
 	_topBar->showSelected(state);
+	if ((state.count > 0) && _composeSearch) {
+		_composeSearch->hideAnimated();
+	}
 	if (items.empty()) {
 		doSetInnerFocus();
 	}
@@ -2597,11 +2724,31 @@ bool RepliesWidget::listIsGoodForAroundPosition(
 void RepliesWidget::listSendBotCommand(
 		const QString &command,
 		const FullMsgId &context) {
+	sendBotCommandWithOptions(command, context, {});
+}
+
+void RepliesWidget::sendBotCommandWithOptions(
+		const QString &command,
+		const FullMsgId &context,
+		Api::SendOptions options) {
+	const auto withPaymentApproved = [=](int approved) {
+		auto copy = options;
+		copy.starsApproved = approved;
+		sendBotCommandWithOptions(command, context, copy);
+	};
+	const auto checked = checkSendPayment(
+		1,
+		options.starsApproved,
+		withPaymentApproved);
+	if (!checked) {
+		return;
+	}
+
 	const auto text = Bot::WrapCommandInChat(
 		_history->peer,
 		command,
 		context);
-	auto message = Api::MessageToSend(prepareSendAction({}));
+	auto message = Api::MessageToSend(prepareSendAction(options));
 	message.textWithTags = { text };
 	session().api().sendMessage(std::move(message));
 	finishSending();
@@ -2780,15 +2927,16 @@ void RepliesWidget::setupDragArea() {
 void RepliesWidget::setupShortcuts() {
 	Shortcuts::Requests(
 	) | rpl::filter([=] {
-		return _topic
-			&& Ui::AppInFocus()
+		return Ui::AppInFocus()
 			&& Ui::InFocusChain(this)
 			&& !controller()->isLayerShown()
 			&& (Core::App().activeWindow() == &controller()->window());
 	}) | rpl::start_with_next([=](not_null<Shortcuts::Request*> request) {
 		using Command = Shortcuts::Command;
 		request->check(Command::Search, 1) && request->handle([=] {
-			searchInTopic();
+			if (!preventsClose(crl::guard(this, [=]{ searchInTopic(); }))) {
+				searchInTopic();
+			}
 			return true;
 		});
 	}, lifetime());
@@ -2797,6 +2945,39 @@ void RepliesWidget::setupShortcuts() {
 void RepliesWidget::searchInTopic() {
 	if (_topic) {
 		controller()->searchInChat(_topic);
+	} else {
+		const auto update = [=] {
+			if (_composeSearch) {
+				_composeControls->hide();
+			} else {
+				_composeControls->show();
+			}
+			updateControlsGeometry();
+		};
+		const auto from = (PeerData*)(nullptr);
+		_composeSearch = std::make_unique<HistoryView::ComposeSearch>(
+			this,
+			controller(),
+			_history,
+			from);
+		_composeSearch->setTopMsgId(_rootId);
+
+		update();
+		doSetInnerFocus();
+
+		using Activation = HistoryView::ComposeSearch::Activation;
+		_composeSearch->activations(
+		) | rpl::start_with_next([=](Activation activation) {
+			showAtPosition(activation.item->position());
+		}, _composeSearch->lifetime());
+
+		_composeSearch->destroyRequests(
+		) | rpl::take(1) | rpl::start_with_next([=] {
+			_composeSearch = nullptr;
+
+			update();
+			doSetInnerFocus();
+		}, _composeSearch->lifetime());
 	}
 }
 

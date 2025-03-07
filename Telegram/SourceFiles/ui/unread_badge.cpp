@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "ui/unread_badge.h"
 
+#include "data/data_emoji_statuses.h"
 #include "data/data_peer.h"
 #include "data/data_user.h"
 #include "data/data_session.h"
@@ -26,7 +27,7 @@ constexpr auto kPlayStatusLimit = 2;
 } // namespace
 
 struct PeerBadge::EmojiStatus {
-	DocumentId id = 0;
+	EmojiStatusId id;
 	std::unique_ptr<Ui::Text::CustomEmoji> emoji;
 	int skip = 0;
 };
@@ -240,7 +241,7 @@ int PeerBadge::drawPremiumEmojiStatus(
 		_emojiStatus->id = id;
 		_emojiStatus->emoji = std::make_unique<LimitedLoopsEmoji>(
 			manager.create(
-				id,
+				Data::EmojiStatusCustomId(id),
 				descriptor.customEmojiRepaint),
 			kPlayStatusLimit);
 	}
@@ -295,9 +296,10 @@ void PeerBadge::set(
 		_botVerifiedData = std::make_unique<BotVerifiedData>();
 	}
 	if (details->iconId) {
-		_botVerifiedData->icon = factory(
-			Data::SerializeCustomEmojiId(details->iconId),
-			repaint);
+		_botVerifiedData->icon = std::make_unique<Ui::Text::FirstFrameEmoji>(
+			factory(
+				Data::SerializeCustomEmojiId(details->iconId),
+				{ .repaint = repaint }));
 	}
 }
 

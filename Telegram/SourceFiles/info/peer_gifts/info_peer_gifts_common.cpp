@@ -42,11 +42,19 @@ std::strong_ordering operator<=>(const GiftBadge &a, const GiftBadge &b) {
 	if (result1 != std::strong_ordering::equal) {
 		return result1;
 	}
-	const auto result2 = (a.bg.rgb() <=> b.bg.rgb());
+	const auto result2 = (a.bg1.rgb() <=> b.bg1.rgb());
 	if (result2 != std::strong_ordering::equal) {
 		return result2;
 	}
-	return a.fg.rgb() <=> b.fg.rgb();
+	const auto result3 = (a.bg2.rgb() <=> b.bg2.rgb());
+	if (result3 != std::strong_ordering::equal) {
+		return result3;
+	}
+	const auto result4 = (a.fg.rgb() <=> b.fg.rgb());
+	if (result4 != std::strong_ordering::equal) {
+		return result4;
+	}
+	return a.gradient <=> b.gradient;
 }
 
 GiftButton::GiftButton(
@@ -77,13 +85,11 @@ void GiftButton::setDescriptor(const GiftDescriptor &descriptor, Mode mode) {
 	unsubscribe();
 	v::match(descriptor, [&](const GiftTypePremium &data) {
 		const auto months = data.months;
-		const auto years = (months % 12) ? 0 : months / 12;
 		_text = Ui::Text::String(st::giftBoxGiftHeight / 4);
 		_text.setMarkedText(
 			st::defaultTextStyle,
-			Ui::Text::Bold(years
-				? tr::lng_years(tr::now, lt_count, years)
-				: tr::lng_months(tr::now, lt_count, months)
+			Ui::Text::Bold(
+				tr::lng_months(tr::now, lt_count, months)
 			).append('\n').append(
 				tr::lng_gift_premium_label(tr::now)
 			));
@@ -93,6 +99,18 @@ void GiftButton::setDescriptor(const GiftDescriptor &descriptor, Mode mode) {
 				data.cost,
 				data.currency,
 				true));
+		if (const auto stars = data.stars) {
+			const auto starsText = Lang::FormatCountDecimal(stars);
+			_byStars.setMarkedText(
+				st::giftBoxByStarsStyle,
+				tr::lng_gift_premium_by_stars(
+					tr::now,
+					lt_amount,
+					_delegate->ministar().append(' ' + starsText),
+					Ui::Text::WithEntities),
+				kMarkupTextOptions,
+				_delegate->textContext());
+		}
 		_userpic = nullptr;
 		if (!_stars) {
 			_stars.emplace(this, true, starsType);
@@ -121,7 +139,7 @@ void GiftButton::setDescriptor(const GiftDescriptor &descriptor, Mode mode) {
 			(unique
 				? tr::lng_gift_price_unique(tr::now, Ui::Text::WithEntities)
 				: _delegate->star().append(
-					' ' + QString::number(data.info.stars))),
+					' ' + Lang::FormatCountDecimal(data.info.stars))),
 			kMarkupTextOptions,
 			_delegate->textContext());
 		if (!_stars) {
@@ -145,9 +163,14 @@ void GiftButton::setDescriptor(const GiftDescriptor &descriptor, Mode mode) {
 	) | rpl::start_with_next([=](not_null<DocumentData*> document) {
 		setDocument(document);
 	}, lifetime());
+	_patterned = false;
+	_uniqueBackgroundCache = QImage();
+	_uniquePatternEmoji = nullptr;
+	_uniquePatternCache.clear();
 
 	if (mode != Mode::Full) {
 		_button = QRect();
+		_small = true;
 		return;
 	}
 	const auto buttonw = _price.maxWidth();
@@ -157,7 +180,9 @@ void GiftButton::setDescriptor(const GiftDescriptor &descriptor, Mode mode) {
 		QSize(buttonw, buttonh)
 	).marginsAdded(st::giftBoxButtonPadding);
 	const auto skipy = _delegate->buttonSize().height()
-		- st::giftBoxButtonBottom
+		- (_byStars.isEmpty()
+			? st::giftBoxButtonBottom
+			: st::giftBoxButtonBottomByStars)
 		- inner.height();
 	const auto skipx = (width() - inner.width()) / 2;
 	const auto outer = (width() - 2 * skipx);
@@ -225,6 +250,12 @@ void GiftButton::resizeEvent(QResizeEvent *e) {
 	}
 }
 
+void GiftButton::contextMenuEvent(QContextMenuEvent *e) {
+	_contextMenuRequests.fire_copy((e->reason() == QContextMenuEvent::Mouse)
+		? e->globalPos()
+		: QCursor::pos());
+}
+
 void GiftButton::cacheUniqueBackground(
 		not_null<Data::UniqueGift*> unique,
 		int width,
@@ -263,11 +294,11 @@ void GiftButton::cacheUniqueBackground(
 	if (!_patterned && _uniquePatternEmoji->ready()) {
 		_patterned = true;
 		auto p = QPainter(&_uniqueBackgroundCache);
-		p.setOpacity(0.5);
 		p.setClipRect(inner);
 		const auto skip = inner.width() / 3;
 		Ui::PaintPoints(
 			p,
+			Ui::PatternPointsSmall(),
 			_uniquePatternCache,
 			_uniquePatternEmoji.get(),
 			*unique,
@@ -338,9 +369,13 @@ void GiftButton::paintEvent(QPaintEvent *e) {
 		p.drawImage(
 			QRect(
 				(width - size.width()) / 2,
-				(_text.isEmpty()
+				(_small
+					? st::giftBoxSmallStickerTop
+					: _text.isEmpty()
 					? st::giftBoxStickerStarTop
-					: st::giftBoxStickerTop),
+					: _byStars.isEmpty()
+					? st::giftBoxStickerTop
+					: st::giftBoxStickerTopByStars),
 				size.width(),
 				size.height()),
 			frame);
@@ -348,9 +383,13 @@ void GiftButton::paintEvent(QPaintEvent *e) {
 	if (hidden) {
 		const auto topleft = QPoint(
 			(width - st::giftBoxStickerSize.width()) / 2,
-			(_text.isEmpty()
+			(_small
+				? st::giftBoxSmallStickerTop
+				: _text.isEmpty()
 				? st::giftBoxStickerStarTop
-				: st::giftBoxStickerTop));
+				: _byStars.isEmpty()
+				? st::giftBoxStickerTop
+				: st::giftBoxStickerTopByStars));
 		_delegate->hiddenMark()->paint(
 			p,
 			frame,
@@ -372,8 +411,11 @@ void GiftButton::paintEvent(QPaintEvent *e) {
 			const auto kMinus = QChar(0x2212);
 			return GiftBadge{
 				.text = kMinus + QString::number(data.discountPercent) + '%',
-				.bg = st::attentionButtonFg->c,
+				.bg1 = st::premiumButtonBg3->c,
+				.bg2 = st::premiumButtonBg2->c,
 				.fg = st::windowBg->c,
+				.gradient = true,
+				.small = true,
 			};
 		}
 		return GiftBadge();
@@ -383,7 +425,7 @@ void GiftButton::paintEvent(QPaintEvent *e) {
 			return GiftBadge{
 				.text = (soldOut
 					? tr::lng_gift_stars_sold_out(tr::now)
-					: !data.userpic
+					: (!data.userpic && !data.info.unique)
 					? tr::lng_gift_stars_limited(tr::now)
 					: (count == 1)
 					? tr::lng_gift_limited_of_one(tr::now)
@@ -393,19 +435,23 @@ void GiftButton::paintEvent(QPaintEvent *e) {
 						(((count % 1000) && (count < 10'000))
 							? Lang::FormatCountDecimal(count)
 							: Lang::FormatCountToShort(count).string))),
-				.bg = (unique
-					? unique->backdrop.patternColor
+				.bg1 = (unique
+					? unique->backdrop.edgeColor
 					: soldOut
 					? st::attentionButtonFg->c
 					: st::windowActiveTextFg->c),
+				.bg2 = (unique
+					? unique->backdrop.patternColor
+					: QColor(0, 0, 0, 0)),
 				.fg = unique ? QColor(255, 255, 255) : st::windowBg->c,
+				.small = true,
 			};
 		}
 		return GiftBadge();
 	});
 
 	if (badge) {
-		const auto rubberOut = _extend.top();
+		const auto rubberOut = st::lineWidth;
 		const auto inner = rect().marginsRemoved(_extend);
 		p.setClipRect(inner.marginsAdded(
 			{ rubberOut, rubberOut, rubberOut, rubberOut }));
@@ -413,10 +459,28 @@ void GiftButton::paintEvent(QPaintEvent *e) {
 		const auto cached = _delegate->cachedBadge(badge);
 		const auto width = cached.width() / cached.devicePixelRatio();
 		p.drawImage(
-			position.x() + singlew + _extend.top() - width,
-			position.y() - _extend.top(),
+			position.x() + singlew + rubberOut - width,
+			position.y() - rubberOut,
 			cached);
 	}
+
+	v::match(_descriptor, [](const GiftTypePremium &) {
+	}, [&](const GiftTypeStars &data) {
+		if (unique && data.pinned) {
+			auto hq = PainterHighQualityEnabler(p);
+			const auto &icon = st::giftBoxPinIcon;
+			const auto skip = st::giftBoxUserpicSkip;
+			const auto add = (st::giftBoxUserpicSize - icon.width()) / 2;
+			p.setPen(Qt::NoPen);
+			p.setBrush(unique->backdrop.patternColor);
+			const auto rect = QRect(
+				QPoint(_extend.left() + skip, _extend.top() + skip),
+				QSize(icon.width() + 2 * add, icon.height() + 2 * add));
+			p.drawEllipse(rect);
+			icon.paintInCenter(p, rect);
+		}
+	});
+
 	if (!_button.isEmpty()) {
 		p.setBrush(unique
 			? QBrush(QColor(255, 255, 255, .2 * 255))
@@ -449,8 +513,9 @@ void GiftButton::paintEvent(QPaintEvent *e) {
 	if (!_text.isEmpty()) {
 		p.setPen(st::windowFg);
 		_text.draw(p, {
-			.position = (position
-				+ QPoint(0, st::giftBoxPremiumTextTop)),
+			.position = (position + QPoint(0, _byStars.isEmpty()
+				? st::giftBoxPremiumTextTop
+				: st::giftBoxPremiumTextTopByStars)),
 			.availableWidth = singlew,
 			.align = style::al_top,
 		});
@@ -468,6 +533,17 @@ void GiftButton::paintEvent(QPaintEvent *e) {
 				+ QPoint(padding.left(), padding.top())),
 			.availableWidth = _price.maxWidth(),
 		});
+
+		if (!_byStars.isEmpty()) {
+			p.setPen(st::creditsFg);
+			_byStars.draw(p, {
+				.position = QPoint(
+					position.x(),
+					_button.y() + _button.height() + st::giftBoxByStarsSkip),
+				.availableWidth = singlew,
+				.align = style::al_top,
+			});
+		}
 	}
 }
 
@@ -491,11 +567,14 @@ TextWithEntities Delegate::star() {
 	return owner->customEmojiManager().creditsEmoji();
 }
 
-std::any Delegate::textContext() {
-	return Core::MarkedTextContext{
-		.session = &_window->session(),
-		.customEmojiRepaint = [] {},
-	};
+TextWithEntities Delegate::ministar() {
+	const auto owner = &_window->session().data();
+	const auto top = st::giftBoxByStarsStarTop;
+	return owner->customEmojiManager().ministarEmoji({ 0, top, 0, 0 });
+}
+
+Ui::Text::MarkedContext Delegate::textContext() {
+	return Core::TextContext({ .session = &_window->session() });
 }
 
 QSize Delegate::buttonSize() {
@@ -633,7 +712,9 @@ rpl::producer<not_null<DocumentData*>> GiftStickerValue(
 }
 
 QImage ValidateRotatedBadge(const GiftBadge &badge, int added) {
-	const auto &font = st::semiboldFont;
+	const auto &font = badge.small
+		? st::giftBoxGiftBadgeFont
+		: st::semiboldFont;
 	const auto twidth = font->width(badge.text) + 2 * added;
 	const auto skip = int(std::ceil(twidth / M_SQRT2));
 	const auto ratio = style::DevicePixelRatio();
@@ -670,12 +751,32 @@ QImage ValidateRotatedBadge(const GiftBadge &badge, int added) {
 		auto p = QPainter(&result);
 		auto hq = PainterHighQualityEnabler(p);
 		p.setPen(Qt::NoPen);
-		p.setBrush(badge.bg);
 
 		p.save();
 		p.translate(textpos);
 		p.rotate(45.);
-		p.drawRect(-5 * twidth, 0, twidth * 12, font->height);
+		const auto rect = QRect(-5 * twidth, 0, twidth * 12, font->height);
+		if (badge.gradient) {
+			const auto skip = font->height / M_SQRT2;
+			auto gradient = QLinearGradient(
+				QPointF(-twidth - skip, 0),
+				QPointF(twidth + skip, 0));
+			gradient.setStops({
+				{ 0., badge.bg1 },
+				{ 1., badge.bg2 },
+			});
+			p.setBrush(gradient);
+			p.drawRect(rect);
+		} else {
+			p.setBrush(badge.bg1);
+			p.drawRect(rect);
+			if (badge.bg2.alpha() > 0) {
+				p.setOpacity(0.5);
+				p.setBrush(badge.bg2);
+				p.drawRect(rect);
+				p.setOpacity(1.);
+			}
+		}
 		p.restore();
 
 		p.drawImage(0, 0, scaled);
