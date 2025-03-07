@@ -99,8 +99,7 @@ public:
 	[[nodiscard]] Main::Session *findSession(uint64 sessionId) const;
 
 	void createManager();
-	void setManager(std::unique_ptr<Manager> manager);
-	[[nodiscard]] Manager &manager() const;
+	void setManager(Fn<std::unique_ptr<Manager>()> create);
 
 	void checkDelayed();
 	void schedule(Data::ItemNotification notification);
@@ -237,22 +236,6 @@ public:
 		friend inline auto operator<=>(
 			const ContextId&,
 			const ContextId&) = default;
-
-		[[nodiscard]] auto toAnyVector() const {
-			return std::vector<std::any>{
-				std::make_any<uint64>(sessionId),
-				std::make_any<uint64>(peerId.value),
-				std::make_any<int64>(topicRootId.bare),
-			};
-		}
-
-		[[nodiscard]] static auto FromAnyVector(const auto &vector) {
-			return ContextId{
-				std::any_cast<uint64>(vector[0]),
-				PeerIdHelper(std::any_cast<uint64>(vector[1])),
-				std::any_cast<int64>(vector[2]),
-			};
-		}
 	};
 	struct NotificationId {
 		ContextId contextId;
@@ -261,21 +244,6 @@ public:
 		friend inline auto operator<=>(
 			const NotificationId&,
 			const NotificationId&) = default;
-
-		[[nodiscard]] auto toAnyVector() const {
-			return std::vector<std::any>{
-				std::make_any<std::vector<std::any>>(contextId.toAnyVector()),
-				std::make_any<int64>(msgId.bare),
-			};
-		}
-
-		[[nodiscard]] static auto FromAnyVector(const auto &vector) {
-			return NotificationId{
-				ContextId::FromAnyVector(
-					std::any_cast<std::vector<std::any>>(vector[0])),
-				std::any_cast<int64>(vector[1]),
-			};
-		}
 	};
 	struct NotificationFields {
 		not_null<HistoryItem*> item;

@@ -45,8 +45,12 @@ ServiceBox::ServiceBox(
 , _title(
 	st::defaultSubsectionTitle.style,
 	_content->title(),
-	kDefaultTextOptions,
-	_maxWidth)
+	kMarkupTextOptions,
+	_maxWidth,
+	Core::TextContext({
+		.session = &parent->history()->session(),
+		.repaint = [parent] { parent->customEmojiRepaint(); },
+	}))
 , _subtitle(
 	st::premiumPreviewAbout.style,
 	Ui::Text::Filtered(
@@ -61,10 +65,10 @@ ServiceBox::ServiceBox(
 		}),
 	kMarkupTextOptions,
 	_maxWidth,
-	Core::MarkedTextContext{
+	Core::TextContext({
 		.session = &parent->history()->session(),
-		.customEmojiRepaint = [parent] { parent->customEmojiRepaint(); },
-	})
+		.repaint = [parent] { parent->customEmojiRepaint(); },
+	}))
 , _size(
 	_content->width(),
 	(st::msgServiceGiftBoxTopSkip
@@ -148,7 +152,16 @@ void ServiceBox::draw(Painter &p, const PaintContext &context) const {
 		const auto &padding = st::msgServiceGiftBoxTitlePadding;
 		top += padding.top();
 		if (!_title.isEmpty()) {
-			_title.draw(p, st::msgPadding.left(), top, _maxWidth, style::al_top);
+			_title.draw(p, {
+				.position = QPoint(st::msgPadding.left(), top),
+				.availableWidth = _maxWidth,
+				.align = style::al_top,
+				.palette = &context.st->serviceTextPalette(),
+				.spoiler = Ui::Text::DefaultSpoilerCache(),
+				.now = context.now,
+				.pausedEmoji = context.paused || On(PowerSaving::kEmojiChat),
+				.pausedSpoiler = context.paused || On(PowerSaving::kChatSpoiler),
+			});
 			top += _title.countHeight(_maxWidth) + padding.bottom();
 		}
 		_parent->prepareCustomEmojiPaint(p, context, _subtitle);

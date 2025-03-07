@@ -124,7 +124,7 @@ private:
 
 struct SavedStarGift {
 	StarGift info;
-	SavedStarGiftId id;
+	SavedStarGiftId manageId;
 	TextWithEntities message;
 	int64 starsConverted = 0;
 	int64 starsUpgradedBySender = 0;
@@ -132,6 +132,7 @@ struct SavedStarGift {
 	TimeId date = 0;
 	bool upgradable = false;
 	bool anonymous = false;
+	bool pinned = false;
 	bool hidden = false;
 	bool mine = false;
 };
