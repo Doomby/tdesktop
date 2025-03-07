@@ -1104,6 +1104,7 @@ QSize OverlayWidget::flipSizeByRotation(QSize size) const {
 }
 
 bool OverlayWidget::hasCopyMediaRestriction(bool skipPremiumCheck) const {
+	return false;
 	if (const auto story = _stories ? _stories->story() : nullptr) {
 		return skipPremiumCheck
 			? !story->canDownloadIfPremium()
