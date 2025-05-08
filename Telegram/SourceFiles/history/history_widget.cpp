@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_editing.h"
 #include "api/api_bot.h"
 #include "api/api_chat_participants.h"
+#include "api/api_global_privacy.h"
 #include "api/api_report.h"
 #include "api/api_sending.h"
 #include "api/api_send_progress.h"
@@ -484,6 +485,9 @@ HistoryWidget::HistoryWidget(
 		if (_ttlInfo) {
 			_ttlInfo->setVisible(!hide);
 		}
+		if (_giftToUser) {
+			_giftToUser->setVisible(!hide);
+		}
 		if (_scheduled) {
 			_scheduled->setVisible(!hide);
 		}
@@ -801,15 +805,24 @@ HistoryWidget::HistoryWidget(
 		| PeerUpdateFlag::OnlineStatus
 		| PeerUpdateFlag::Notifications
 		| PeerUpdateFlag::ChannelAmIn
-		| PeerUpdateFlag::ChannelLinkedChat
+		| PeerUpdateFlag::DiscussionLink
 		| PeerUpdateFlag::Slowmode
 		| PeerUpdateFlag::BotStartToken
 		| PeerUpdateFlag::MessagesTTL
 		| PeerUpdateFlag::ChatThemeEmoji
 		| PeerUpdateFlag::FullInfo
 		| PeerUpdateFlag::StarsPerMessage
+		| PeerUpdateFlag::GiftSettings
 	) | rpl::filter([=](const Data::PeerUpdate &update) {
-		return (update.peer.get() == _peer);
+		if (update.peer.get() == _peer) {
+			return true;
+		} else if (update.peer->isSelf()
+			&& (update.flags & PeerUpdateFlag::GiftSettings)) {
+			refreshSendGiftToggle();
+			updateControlsVisibility();
+			updateControlsGeometry();
+		}
+		return false;
 	}) | rpl::map([](const Data::PeerUpdate &update) {
 		return update.flags;
 	}) | rpl::start_with_next([=](Data::PeerUpdate::Flags flags) {
@@ -847,7 +860,11 @@ HistoryWidget::HistoryWidget(
 			updateFieldPlaceholder();
 			updateSendButtonType();
 		}
-		if (flags & PeerUpdateFlag::BotStartToken) {
+		if (flags & PeerUpdateFlag::GiftSettings) {
+			refreshSendGiftToggle();
+		}
+		if (flags & (PeerUpdateFlag::BotStartToken
+			| PeerUpdateFlag::GiftSettings)) {
 			updateControlsVisibility();
 			updateControlsGeometry();
 		}
@@ -860,7 +877,7 @@ HistoryWidget::HistoryWidget(
 			| PeerUpdateFlag::OnlineStatus
 			| PeerUpdateFlag::Rights
 			| PeerUpdateFlag::ChannelAmIn
-			| PeerUpdateFlag::ChannelLinkedChat)) {
+			| PeerUpdateFlag::DiscussionLink)) {
 			handlePeerUpdate();
 		}
 		if (flags & PeerUpdateFlag::MessagesTTL) {
@@ -2509,6 +2526,7 @@ void HistoryWidget::showHistory(
 			updateNotifyControls();
 		}
 		refreshScheduledToggle();
+		refreshSendGiftToggle();
 		refreshSendAsToggle();
 
 		if (_showAtMsgId == ShowAtUnreadMsgId) {
@@ -2596,6 +2614,18 @@ void HistoryWidget::showHistory(
 					}
 					sendBotStartCommand();
 				}
+			} else {
+				Info::Profile::BirthdayValue(
+					user
+				) | rpl::map(
+					Data::IsBirthdayTodayValue
+				) | rpl::flatten_latest(
+				) | rpl::distinct_until_changed(
+				) | rpl::start_with_next([=] {
+					refreshSendGiftToggle();
+					updateControlsVisibility();
+					updateControlsGeometry();
+				}, _list->lifetime());
 			}
 		}
 		if (!_history->folderKnown()) {
@@ -3008,6 +3038,35 @@ void HistoryWidget::refreshScheduledToggle() {
 	}
 }
 
+void HistoryWidget::refreshSendGiftToggle() {
+	using Type = Api::DisallowedGiftType;
+	const auto user = _peer ? _peer->asUser() : nullptr;
+	const auto disallowed = user ? user->disallowedGiftTypes() : Type();
+	const auto all = Type::Premium
+		| Type::Unlimited
+		| Type::Limited
+		| Type::Unique;
+	const auto has = user
+		&& _canSendMessages
+		&& !user->isServiceUser()
+		&& !user->isSelf()
+		&& !user->isBot()
+		&& ((disallowed & Type::SendHide)
+			|| (session().user()->disallowedGiftTypes() & Type::SendHide)
+			|| Data::IsBirthdayToday(user->birthday()))
+		&& ((disallowed & all) != all);
+	if (!_giftToUser && has) {
+		_giftToUser.create(this, st::historyGiftToUser);
+		_giftToUser->show();
+		_giftToUser->addClickHandler([=] {
+			Ui::ShowStarGiftBox(controller(), _peer);
+		});
+		orderWidgets(); // Raise drag areas to the top.
+	} else if (_giftToUser && !has) {
+		_giftToUser.destroy();
+	}
+}
+
 void HistoryWidget::setupSendAsToggle() {
 	session().sendAsPeers().updated(
 	) | rpl::filter([=](not_null<PeerData*> peer) {
@@ -3156,6 +3215,9 @@ void HistoryWidget::updateControlsVisibility() {
 		if (_scheduled) {
 			_scheduled->hide();
 		}
+		if (_giftToUser) {
+			_giftToUser->hide();
+		}
 		if (_ttlInfo) {
 			_ttlInfo->hide();
 		}
@@ -3267,6 +3329,14 @@ void HistoryWidget::updateControlsVisibility() {
 					rightButtonsChanged = true;
 				}
 			}
+			if (_giftToUser) {
+				const auto was = _giftToUser->isVisible();
+				const auto now = (!_editMsgId) && (!hideExtraButtons);
+				if (was != now) {
+					_giftToUser->setVisible(now);
+					rightButtonsChanged = true;
+				}
+			}
 			if (_ttlInfo) {
 				const auto was = _ttlInfo->isVisible();
 				const auto now = (!_editMsgId) && (!hideExtraButtons);
@@ -3316,6 +3386,9 @@ void HistoryWidget::updateControlsVisibility() {
 		}
 		if (_scheduled) {
 			_scheduled->hide();
+		}
+		if (_giftToUser) {
+			_giftToUser->hide();
 		}
 		if (_ttlInfo) {
 			_ttlInfo->hide();
@@ -5646,7 +5719,7 @@ void HistoryWidget::moveFieldControls() {
 	}
 
 // (_botMenu.button) (_attachToggle|_replaceMedia) (_sendAs) ---- _inlineResults ------------------------------ _tabbedPanel ------ _fieldBarCancel
-// (_attachDocument|_attachPhoto) _field (_ttlInfo) (_scheduled) (_silent|_cmdStart|_kbShow) (_kbHide|_tabbedSelectorToggle) _send
+// (_attachDocument|_attachPhoto) _field (_ttlInfo) (_scheduled) (_giftToUser) (_silent|_cmdStart|_kbShow) (_kbHide|_tabbedSelectorToggle) _send
 // (_botStart|_unblock|_joinChannel|_muteUnmute|_reportMessages)
 
 	auto buttonsBottom = bottom - _attachToggle->height();
@@ -5687,6 +5760,10 @@ void HistoryWidget::moveFieldControls() {
 	const auto kbShowShown = _history && !_kbShown && _keyboard->hasMarkup();
 	if (kbShowShown || _cmdStartShown || _silent) {
 		right += _botCommandStart->width();
+	}
+	if (_giftToUser) {
+		_giftToUser->moveToRight(right, buttonsBottom);
+		right += _giftToUser->width();
 	}
 	if (_scheduled) {
 		_scheduled->moveToRight(right, buttonsBottom);
@@ -5745,10 +5822,13 @@ void HistoryWidget::updateFieldSize() {
 	if (_cmdStartShown) {
 		fieldWidth -= _botCommandStart->width();
 	}
-	if (_silent && _silent->isVisible()) {
+	if (_silent && !_silent->isHidden()) {
 		fieldWidth -= _silent->width();
 	}
-	if (_scheduled && _scheduled->isVisible()) {
+	if (_giftToUser && !_giftToUser->isHidden()) {
+		fieldWidth -= _giftToUser->width();
+	}
+	if (_scheduled && !_scheduled->isHidden()) {
 		fieldWidth -= _scheduled->width();
 	}
 	if (_ttlInfo && _ttlInfo->isVisible()) {
@@ -6514,21 +6594,24 @@ void HistoryWidget::updateSendRestriction() {
 	_sendRestrictionKey = restriction.text;
 	if (!restriction) {
 		_sendRestriction = nullptr;
+	} else if (restriction.frozen) {
+		const auto show = controller()->uiShow();
+		_sendRestriction = FrozenWriteRestriction(
+			this,
+			show,
+			FrozenWriteRestrictionType::MessageField);
 	} else if (restriction.premiumToLift) {
 		_sendRestriction = PremiumRequiredSendRestriction(
 			this,
 			_peer->asUser(),
 			controller());
 	} else if (const auto lifting = restriction.boostsToLift) {
-		auto button = base::make_unique_q<Ui::FlatButton>(
+		const auto show = controller()->uiShow();
+		_sendRestriction = BoostsToLiftWriteRestriction(
 			this,
-			restriction.text,
-			st::historyComposeButton);
-		const auto channel = _peer->asChannel();
-		button->setClickedCallback([=] {
-			controller()->resolveBoostState(channel, lifting);
-		});
-		_sendRestriction = std::move(button);
+			show,
+			_peer,
+			lifting);
 	} else {
 		_sendRestriction = TextErrorSendRestriction(this, restriction.text);
 	}
@@ -7333,7 +7416,7 @@ bool HistoryWidget::showSlowmodeError() {
 				Ui::FormatDurationWordsSlowmode(left));
 		} else if (_peer->slowmodeApplied()) {
 			if (const auto item = _history->latestSendingMessage()) {
-				if (const auto view = item->mainView()) {
+				if (item->mainView()) {
 					animatedScrollToItem(item->id);
 					enqueueMessageHighlight({ item });
 				}
@@ -7568,12 +7651,12 @@ void HistoryWidget::checkPinnedBarState() {
 		}
 		return (count > 1);
 	}) | rpl::distinct_until_changed();
-	auto markupRefreshed = HistoryView::PinnedBarItemWithReplyMarkup(
+	auto customButtonItem = HistoryView::PinnedBarItemWithCustomButton(
 		&session(),
 		_pinnedTracker->shownMessageId());
 	rpl::combine(
 		rpl::duplicate(pinnedRefreshed),
-		rpl::duplicate(markupRefreshed)
+		rpl::duplicate(customButtonItem)
 	) | rpl::start_with_next([=](bool many, HistoryItem *item) {
 		refreshPinnedBarButton(many, item);
 	}, _pinnedBar->lifetime());
@@ -7584,7 +7667,7 @@ void HistoryWidget::checkPinnedBarState() {
 			_pinnedTracker->shownMessageId(),
 			[bar = _pinnedBar.get()] { bar->customEmojiRepaint(); }),
 		std::move(pinnedRefreshed),
-		std::move(markupRefreshed)
+		std::move(customButtonItem)
 	) | rpl::map([=](Ui::MessageBarContent &&content, bool, HistoryItem*) {
 		const auto id = (!content.title.isEmpty() || !content.text.empty())
 			? _pinnedTracker->currentMessageId().message
@@ -7722,58 +7805,31 @@ void HistoryWidget::refreshPinnedBarButton(bool many, HistoryItem *item) {
 					? id.message.msg
 					: (id.message.msg - ServerMaxMsgId))));
 	};
-	if (const auto replyMarkup = item ? item->inlineReplyMarkup() : nullptr) {
-		const auto &rows = replyMarkup->data.rows;
-		if ((rows.size() == 1) && (rows.front().size() == 1)) {
-			const auto text = rows.front().front().text;
-			if (!text.isEmpty()) {
-				const auto &st = st::historyPinnedBotButton;
-				auto button = object_ptr<Ui::RoundButton>(
-					this,
-					rpl::never<QString>(),
-					st);
-				const auto label = Ui::CreateChild<Ui::FlatLabel>(
-					button.data(),
-					text,
-					st::historyPinnedBotLabel);
-				if (label->width() > st::historyPinnedBotButtonMaxWidth) {
-					label->resizeToWidth(st::historyPinnedBotButtonMaxWidth);
-				}
-				button->setFullWidth(label->width()
-					+ st.padding.left()
-					+ st.padding.right()
-					+ st.height);
-				label->moveToLeft(
-					st.padding.left() + st.height / 2,
-					(button->height() - label->height()) / 2);
-				label->setTextColorOverride(st.textFg->c);
-				label->setAttribute(Qt::WA_TransparentForMouseEvents);
-				button->setTextTransform(
-					Ui::RoundButton::TextTransform::NoTransform);
-				button->setFullRadius(true);
-				button->setClickedCallback([=] {
-					Api::ActivateBotCommand(
-						_list->prepareClickHandlerContext(item->fullId()),
-						0,
-						0);
-				});
-				struct State {
-					base::unique_qptr<Ui::PopupMenu> menu;
-				};
-				const auto state = button->lifetime().make_state<State>();
-				_pinnedBar->contextMenuRequested(
-				) | rpl::start_with_next([=, raw = button.data()] {
-					state->menu = base::make_unique_q<Ui::PopupMenu>(raw);
-					state->menu->addAction(
-						tr::lng_settings_events_pinned(tr::now),
-						openSection);
-					state->menu->popup(QCursor::pos());
-				}, button->lifetime());
-				_pinnedBar->setRightButton(std::move(button));
-				return;
-			}
+	const auto context = [copy = _list](FullMsgId itemId) {
+		if (const auto raw = copy.data()) {
+			return raw->prepareClickHandlerContext(itemId);
 		}
+		return ClickHandlerContext();
+	};
+	auto customButton = CreatePinnedBarCustomButton(this, item, context);
+	if (customButton) {
+		struct State {
+			base::unique_qptr<Ui::PopupMenu> menu;
+		};
+		const auto buttonRaw = customButton.data();
+		const auto state = buttonRaw->lifetime().make_state<State>();
+		_pinnedBar->contextMenuRequested(
+		) | rpl::start_with_next([=] {
+			state->menu = base::make_unique_q<Ui::PopupMenu>(buttonRaw);
+			state->menu->addAction(
+				tr::lng_settings_events_pinned(tr::now),
+				openSection);
+			state->menu->popup(QCursor::pos());
+		}, buttonRaw->lifetime());
+		_pinnedBar->setRightButton(std::move(customButton));
+		return;
 	}
+
 	const auto close = !many;
 	auto button = object_ptr<Ui::IconButton>(
 		this,
@@ -8658,6 +8714,7 @@ bool HistoryWidget::updateCanSendMessage() {
 		cancelReply();
 	}
 	refreshScheduledToggle();
+	refreshSendGiftToggle();
 	refreshSilentToggle();
 	return true;
 }

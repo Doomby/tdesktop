@@ -1397,7 +1397,7 @@ void Element::recountDisplayDateInBlocks() {
 
 		if (const auto previous = previousDisplayedInBlocks()) {
 			const auto prev = previous->data();
-			return prev->isEmpty()
+			return prev->hideDisplayDate()
 				|| (previous->dateTime().date() != dateTime().date());
 		}
 		return true;
@@ -1547,14 +1547,6 @@ bool Element::hasBubble() const {
 
 bool Element::unwrapped() const {
 	return true;
-}
-
-bool Element::hasFastReply() const {
-	return false;
-}
-
-bool Element::displayFastReply() const {
-	return false;
 }
 
 std::optional<QSize> Element::rightActionSize() const {

@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/options.h"
 #include "base/platform/base_platform_info.h"
 #include "base/platform/linux/base_linux_dbus_utilities.h"
+#include "platform/platform_specific.h"
 #include "core/application.h"
 #include "core/sandbox.h"
 #include "core/core_settings.h"
@@ -26,6 +27,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QBuffer>
 #include <QtCore/QVersionNumber>
 #include <QtGui/QGuiApplication>
+
+#include <ksandbox.h>
 
 #include <xdgnotifications/xdgnotifications.hpp>
 
@@ -423,7 +426,8 @@ void Manager::Private::init(XdgNotifications::NotificationsProxy proxy) {
 		Core::Sandbox::Instance().customEnterFromEventLoop([&] {
 			for (const auto &[key, notifications] : _notifications) {
 				for (const auto &[msgId, notification] : notifications) {
-					if (id == v::get<uint>(notification->id)) {
+					const auto &nid = notification->id;
+					if (v::is<uint>(nid) && v::get<uint>(nid) == id) {
 						if (actionName == "default") {
 							_manager->notificationActivated({ key, msgId });
 						} else if (actionName == "mail-mark-read") {
@@ -447,7 +451,8 @@ void Manager::Private::init(XdgNotifications::NotificationsProxy proxy) {
 		Core::Sandbox::Instance().customEnterFromEventLoop([&] {
 			for (const auto &[key, notifications] : _notifications) {
 				for (const auto &[msgId, notification] : notifications) {
-					if (id == v::get<uint>(notification->id)) {
+					const auto &nid = notification->id;
+					if (v::is<uint>(nid) && v::get<uint>(nid) == id) {
 						_manager->notificationReplied(
 							{ key, msgId },
 							{ QString::fromStdString(text), {} });
@@ -468,7 +473,8 @@ void Manager::Private::init(XdgNotifications::NotificationsProxy proxy) {
 			std::string token) {
 		for (const auto &[key, notifications] : _notifications) {
 			for (const auto &[msgId, notification] : notifications) {
-				if (id == v::get<uint>(notification->id)) {
+				const auto &nid = notification->id;
+				if (v::is<uint>(nid) && v::get<uint>(nid) == id) {
 					GLib::setenv("XDG_ACTIVATION_TOKEN", token, true);
 					return;
 				}
@@ -501,7 +507,8 @@ void Manager::Private::init(XdgNotifications::NotificationsProxy proxy) {
 					* In all other cases we keep the notification reference so that we may clear the notification later from history,
 					* if the message for that notification is read (e.g. chat is opened or read from another device).
 					*/
-					if (id == v::get<uint>(notification->id) && reason == 2) {
+					const auto &nid = notification->id;
+					if (v::is<uint>(nid) && v::get<uint>(nid) == id && reason == 2) {
 						clearNotification({ key, msgId });
 						return;
 					}
@@ -530,20 +537,26 @@ void Manager::Private::showNotification(
 		.msgId = info.itemId,
 	};
 	auto notification = _application
-		? Gio::Notification::new_(
-			info.subtitle.isEmpty()
-				? info.title.toStdString()
-				: info.subtitle.toStdString()
-					+ " (" + info.title.toStdString() + ')')
+		? Gio::Notification::new_(info.title.toStdString())
 		: Gio::Notification();
 
 	std::vector<gi::cstring> actions;
 	auto hints = GLib::VariantDict::new_();
 	if (notification) {
-		notification.set_body(info.message.toStdString());
+		notification.set_body(info.subtitle.isEmpty()
+			? info.message.toStdString()
+			: tr::lng_dialogs_text_with_from(
+				tr::now,
+				lt_from_part,
+				tr::lng_dialogs_text_from_wrapped(
+					tr::now,
+					lt_from,
+					info.subtitle),
+				lt_message,
+				info.message).toStdString());
 
 		notification.set_icon(
-			Gio::ThemedIcon::new_(base::IconName().toStdString()));
+			Gio::ThemedIcon::new_(ApplicationIconName().toStdString()));
 
 		// for chat messages, according to
 		// https://docs.gtk.org/gio/enum.NotificationPriority.html
@@ -612,9 +625,9 @@ void Manager::Private::showNotification(
 				actions.push_back(
 					tr::lng_notification_reply(tr::now).toStdString());
 			}
-
-			actions.push_back({});
 		}
+
+		actions.push_back({});
 
 		if (HasCapability("action-icons")) {
 			hints.insert_value(
@@ -719,8 +732,6 @@ void Manager::Private::showNotification(
 				const auto hasImage = !imageKey.empty()
 					&& hints.lookup_value(imageKey);
 
-				const auto hasBodyMarkup = HasCapability("body-markup");
-
 				const auto callbackWrap = gi::unwrap(
 					Gio::AsyncReadyCallback(
 						crl::guard(this, [=](
@@ -757,24 +768,29 @@ void Manager::Private::showNotification(
 					AppName.data(),
 					0,
 					(!hasImage
-						? base::IconName().toStdString()
+						? ApplicationIconName().toStdString()
 						: std::string()).c_str(),
-					(hasBodyMarkup || info.subtitle.isEmpty()
-						? info.title.toStdString()
-						: info.subtitle.toStdString()
-							+ " (" + info.title.toStdString() + ')').c_str(),
-					(hasBodyMarkup
+					info.title.toStdString().c_str(),
+					(HasCapability("body-markup")
 						? info.subtitle.isEmpty()
 							? info.message.toHtmlEscaped().toStdString()
 							: u"<b>%1</b>\n%2"_q.arg(
 								info.subtitle.toHtmlEscaped(),
 								info.message.toHtmlEscaped()).toStdString()
-						: info.message.toStdString()).c_str(),
-					!actions.empty()
-						? (actions
-							| ranges::views::transform(&gi::cstring::c_str)
-							| ranges::to_vector).data()
-						: nullptr,
+						: info.subtitle.isEmpty()
+							? info.message.toStdString()
+							: tr::lng_dialogs_text_with_from(
+								tr::now,
+								lt_from_part,
+								tr::lng_dialogs_text_from_wrapped(
+									tr::now,
+									lt_from,
+									info.subtitle),
+								lt_message,
+								info.message).toStdString()).c_str(),
+					(actions
+						| ranges::views::transform(&gi::cstring::c_str)
+						| ranges::to_vector).data(),
 					hints.end().gobj_(),
 					-1,
 					nullptr,

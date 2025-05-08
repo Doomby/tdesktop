@@ -101,8 +101,12 @@ PRIVATE
     dialogs/ui/chat_search_empty.h
     dialogs/ui/chat_search_in.cpp
     dialogs/ui/chat_search_in.h
+    dialogs/ui/dialogs_quick_action_context.h
+    dialogs/ui/dialogs_quick_action.h
     dialogs/ui/dialogs_stories_list.cpp
     dialogs/ui/dialogs_stories_list.h
+    dialogs/ui/dialogs_top_bar_suggestion_content.cpp
+    dialogs/ui/dialogs_top_bar_suggestion_content.h
     dialogs/ui/top_peers_strip.cpp
     dialogs/ui/top_peers_strip.h
 
@@ -129,9 +133,6 @@ PRIVATE
     history/admin_log/history_admin_log_filter_value.h
     history/history_view_top_toast.cpp
     history/history_view_top_toast.h
-    history/history_view_swipe.cpp
-    history/history_view_swipe.h
-    history/history_view_swipe_data.h
     history/view/controls/history_view_characters_limit.cpp
     history/view/controls/history_view_characters_limit.h
     history/view/controls/history_view_voice_record_button.cpp
@@ -186,6 +187,8 @@ PRIVATE
 
     media/media_common.h
 
+    menu/gift_resale_filter.cpp
+    menu/gift_resale_filter.h
     menu/menu_check_item.cpp
     menu/menu_check_item.h
     menu/menu_ttl.cpp
@@ -382,6 +385,9 @@ PRIVATE
     ui/controls/send_as_button.h
     ui/controls/send_button.cpp
     ui/controls/send_button.h
+    ui/controls/swipe_handler.cpp
+    ui/controls/swipe_handler.h
+    ui/controls/swipe_handler_data.h
     ui/controls/tabbed_search.cpp
     ui/controls/tabbed_search.h
     ui/controls/who_reacted_context_action.cpp
@@ -518,6 +524,5 @@ PRIVATE
     desktop-app::lib_spellcheck
     desktop-app::lib_stripe
     desktop-app::external_kcoreaddons
-    desktop-app::external_openh264
     desktop-app::external_webrtc
 )
