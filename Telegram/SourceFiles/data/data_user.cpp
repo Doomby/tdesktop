@@ -8,8 +8,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_user.h"
 
 #include "api/api_credits.h"
+#include "api/api_global_privacy.h"
 #include "api/api_sensitive_content.h"
 #include "api/api_statistics.h"
+#include "base/timer_rpl.h"
 #include "storage/localstorage.h"
 #include "storage/storage_account.h"
 #include "storage/storage_user_photos.h"
@@ -659,6 +661,13 @@ bool UserData::hasCalls() const {
 		&& (callsStatus() != CallsStatus::Unknown);
 }
 
+void UserData::setDisallowedGiftTypes(Api::DisallowedGiftTypes types) {
+	if (_disallowedGiftTypes != types) {
+		_disallowedGiftTypes = types;
+		session().changes().peerUpdated(this, UpdateFlag::GiftSettings);
+	}
+}
+
 namespace Data {
 
 void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
@@ -759,6 +768,7 @@ void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
 				Data::PeerUpdate::Flag::Rights);
 		}
 		if (info->canEditInformation) {
+			static constexpr auto kTimeout = crl::time(60000);
 			const auto id = user->id;
 			const auto weak = base::make_weak(&user->session());
 			const auto creditsLoadLifetime
@@ -768,23 +778,28 @@ void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
 			creditsLoad->request({}, [=](Data::CreditsStatusSlice slice) {
 				if (const auto strong = weak.get()) {
 					strong->credits().apply(id, slice.balance);
-					creditsLoadLifetime->destroy();
 				}
+				creditsLoadLifetime->destroy();
 			});
+			base::timer_once(kTimeout) | rpl::start_with_next([=] {
+				creditsLoadLifetime->destroy();
+			}, *creditsLoadLifetime);
 			const auto currencyLoadLifetime
 				= std::make_shared<rpl::lifetime>();
 			const auto currencyLoad
 				= currencyLoadLifetime->make_state<Api::EarnStatistics>(user);
-			currencyLoad->request(
-			) | rpl::start_with_error_done([=](const QString &error) {
-				currencyLoadLifetime->destroy();
-			}, [=] {
+			const auto apply = [=](Data::EarnInt balance) {
 				if (const auto strong = weak.get()) {
-					strong->credits().applyCurrency(
-						id,
-						currencyLoad->data().currentBalance);
-					currencyLoadLifetime->destroy();
+					strong->credits().applyCurrency(id, balance);
 				}
+				currencyLoadLifetime->destroy();
+			};
+			currencyLoad->request() | rpl::start_with_error_done(
+				[=](const QString &error) { apply(0); },
+				[=] { apply(currencyLoad->data().currentBalance); },
+				*currencyLoadLifetime);
+			base::timer_once(kTimeout) | rpl::start_with_next([=] {
+				currencyLoadLifetime->destroy();
 			}, *currencyLoadLifetime);
 		}
 	}
@@ -814,6 +829,31 @@ void ApplyUserUpdate(not_null<UserData*> user, const MTPDuserFull &update) {
 	}
 	user->setBotVerifyDetails(
 		ParseBotVerifyDetails(update.vbot_verification()));
+
+	if (const auto gifts = update.vdisallowed_gifts()) {
+		const auto &data = gifts->data();
+		user->setDisallowedGiftTypes(Api::DisallowedGiftType()
+			| (data.is_disallow_unlimited_stargifts()
+				? Api::DisallowedGiftType::Unlimited
+				: Api::DisallowedGiftType())
+			| (data.is_disallow_limited_stargifts()
+				? Api::DisallowedGiftType::Limited
+				: Api::DisallowedGiftType())
+			| (data.is_disallow_unique_stargifts()
+				? Api::DisallowedGiftType::Unique
+				: Api::DisallowedGiftType())
+			| (data.is_disallow_premium_gifts()
+				? Api::DisallowedGiftType::Premium
+				: Api::DisallowedGiftType())
+			| (update.is_display_gifts_button()
+				? Api::DisallowedGiftType::SendHide
+				: Api::DisallowedGiftType()));
+	} else {
+		user->setDisallowedGiftTypes(Api::DisallowedGiftTypes()
+			| (update.is_display_gifts_button()
+				? Api::DisallowedGiftType::SendHide
+				: Api::DisallowedGiftType()));
+	}
 
 	user->owner().stories().apply(user, update.vstories());
 

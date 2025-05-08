@@ -7,14 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
-namespace HistoryView {
+#include "settings/settings_type.h"
 
-struct ChatPaintGestureHorizontalData {
-	float64 ratio = 0.;
-	float64 reachRatio = 0.;
-	int64 msgBareId = 0;
-	int translation = 0;
-	int cursorTop = 0;
-};
+namespace Settings {
 
-} // namespace HistoryView
+Type CloudLoginEmailId();
+
+} // namespace Settings
+

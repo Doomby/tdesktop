@@ -10,8 +10,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/cached_round_corners.h"
 #include "ui/chat/message_bubble.h"
 #include "ui/chat/chat_style_radius.h"
+#include "ui/controls/swipe_handler_data.h"
 #include "ui/style/style_core_palette.h"
-#include "history/history_view_swipe_data.h"
 #include "layout/layout_selection.h"
 #include "styles/style_basic.h"
 
@@ -76,6 +76,7 @@ struct MessageStyle {
 	style::icon historyCallArrowMissed = { Qt::Uninitialized };
 	style::icon historyCallIcon = { Qt::Uninitialized };
 	style::icon historyCallCameraIcon = { Qt::Uninitialized };
+	style::icon historyCallGroupIcon = { Qt::Uninitialized };
 	style::icon historyFilePlay = { Qt::Uninitialized };
 	style::icon historyFileWaiting = { Qt::Uninitialized };
 	style::icon historyFileDownload = { Qt::Uninitialized };
@@ -165,7 +166,7 @@ struct ChatPaintContext {
 	QPainterPath *highlightPathCache = nullptr;
 	mutable QRect highlightInterpolateTo;
 	crl::time now = 0;
-	HistoryView::ChatPaintGestureHorizontalData gestureHorizontal;
+	Ui::Controls::SwipeContextData gestureHorizontal;
 
 	void translate(int x, int y) {
 		viewport.translate(x, y);
