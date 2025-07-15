@@ -14,6 +14,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_item_helpers.h"
 #include "history/view/controls/history_view_forward_panel.h"
 #include "history/view/controls/history_view_draft_options.h"
+#include "history/view/controls/history_view_suggest_options.h"
 #include "history/view/media/history_view_sticker.h"
 #include "history/view/media/history_view_web_page.h"
 #include "history/view/reactions/history_view_reactions.h"
@@ -76,6 +77,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/application.h"
 #include "apiwrap.h"
 #include "api/api_attached_stickers.h"
+#include "api/api_suggest_post.h"
 #include "api/api_toggling_media.h"
 #include "api/api_who_reacted.h"
 #include "api/api_views.h"
@@ -94,6 +96,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_file_click_handler.h"
 #include "data/data_histories.h"
 #include "data/data_changes.h"
+#include "data/data_todo_list.h"
 #include "dialogs/ui/dialogs_video_userpic.h"
 #include "styles/style_chat.h"
 #include "styles/style_menu_icons.h"
@@ -619,10 +622,10 @@ void HistoryInner::setupSwipeReplyAndBack() {
 					: still)->fullId();
 				_widget->replyToMessage({
 					.messageId = replyToItemId,
-					.quote = selected.text,
-					.quoteOffset = selected.offset,
+					.quote = selected.highlight.quote,
+					.quoteOffset = selected.highlight.quoteOffset,
 				});
-				if (!selected.text.empty()) {
+				if (!selected.highlight.quote.empty()) {
 					_widget->clearSelected();
 				}
 			};
@@ -2339,6 +2342,9 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 	const auto linkUserpicPeerId = (link && _dragStateUserpic)
 		? link->property(kPeerLinkPeerIdProperty).toULongLong()
 		: 0;
+	const auto todoListTaskId = link
+		? link->property(kTodoListItemIdProperty).toInt()
+		: 0;
 	const auto session = &this->session();
 	_whoReactedMenuLifetime.destroy();
 	if (!clickedReaction.empty()
@@ -2699,26 +2705,41 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			const auto selected = selectedQuote(item);
 			auto text = (selected
 				? tr::lng_context_quote_and_reply
+				: todoListTaskId
+				? tr::lng_context_reply_to_task
 				: tr::lng_context_reply_msg)(
 					tr::now,
 					Ui::Text::FixAmpersandInAction);
 			const auto replyToItem = selected.item ? selected.item : item;
 			const auto itemId = replyToItem->fullId();
-			const auto quote = selected.text;
-			const auto quoteOffset = selected.offset;
 			_menu->addAction(std::move(text), [=] {
 				_widget->replyToMessage({
 					.messageId = itemId,
-					.quote = quote,
-					.quoteOffset = quoteOffset,
+					.quote = selected.highlight.quote,
+					.quoteOffset = selected.highlight.quoteOffset,
+					.todoItemId = todoListTaskId,
 				});
-				if (!quote.empty()) {
+				if (!selected.highlight.quote.empty()) {
 					_widget->clearSelected();
 				}
 			}, &st::menuIconReply);
 		}
 	};
 
+	const auto addTodoListAction = [&](HistoryItem *item) {
+		if (!item || !Window::PeerMenuShowAddTodoListTasks(item)) {
+			return;
+		}
+		const auto itemId = item->fullId();
+		_menu->addAction(
+			tr::lng_todo_add_title(tr::now),
+			crl::guard(this, [=] {
+				if (const auto item = session->data().message(itemId)) {
+					Window::PeerMenuAddTodoListTasks(_controller, item);
+				}
+			}),
+			&st::menuIconAdd);
+	};
 	const auto lnkPhoto = link
 		? reinterpret_cast<PhotoData*>(
 			link->property(kPhotoLinkMediaProperty).toULongLong())
@@ -2794,6 +2815,11 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 						forwardItem(itemId);
 					}, &st::menuIconForward);
 				}
+				if (HistoryView::CanAddOfferToMessage(item)) {
+					_menu->addAction(tr::lng_context_add_offer(tr::now), [=] {
+						Api::AddOfferToMessage(_controller->uiShow(), itemId);
+					}, &st::menuIconTagSell);
+				}
 				if (item->canDelete()) {
 					const auto callback = [=] { deleteItem(itemId); };
 					if (item->isUploading()) {
@@ -2858,11 +2884,9 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			: nullptr;
 		if (sponsored) {
 			Menu::FillSponsored(
-				this,
 				Ui::Menu::CreateAddActionCallback(_menu),
 				controller->uiShow(),
-				sponsored->fullId(),
-				false);
+				sponsored->fullId());
 		}
 		if (isUponSelected > 0) {
 			addReplyAction(item);
@@ -2889,6 +2913,7 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 			addItemActions(item, item);
 		} else {
 			addReplyAction(partItemOrLeader);
+			addTodoListAction(partItemOrLeader);
 			addItemActions(item, albumPartItem);
 			if (item && !isUponSelected) {
 				const auto media = (view ? view->media() : nullptr);
@@ -3042,6 +3067,11 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					_menu->addAction(tr::lng_context_forward_msg(tr::now), [=] {
 						forwardAsGroup(itemId);
 					}, &st::menuIconForward);
+				}
+				if (HistoryView::CanAddOfferToMessage(item)) {
+					_menu->addAction(tr::lng_context_add_offer(tr::now), [=] {
+						Api::AddOfferToMessage(_controller->uiShow(), itemId);
+					}, &st::menuIconTagSell);
 				}
 				if (canDelete) {
 					const auto callback = [=] {
@@ -4873,21 +4903,26 @@ QString HistoryInner::tooltipText() const {
 		if (const auto view = Element::Hovered()) {
 			return HistoryView::DateTooltipText(view);
 		}
-	} else if (_mouseCursorState == CursorState::Forwarded
+	}
+	if (_mouseCursorState == CursorState::Forwarded
 		&& _mouseAction == MouseAction::None) {
 		if (const auto view = Element::Moused()) {
 			if (const auto forwarded = view->data()->Get<HistoryMessageForwarded>()) {
 				return forwarded->text.toString();
 			}
 		}
-	} else if (const auto lnk = ClickHandler::getActive()) {
+	}
+	if (const auto lnk = ClickHandler::getActive()) {
 		using namespace HistoryView::Reactions;
 		const auto count = ReactionCountOfLink(_dragStateItem, lnk);
 		if (count.count && count.shortened) {
 			return Lang::FormatCountDecimal(count.count);
 		}
-		return lnk->tooltip();
-	} else if (const auto view = Element::Moused()) {
+		if (const auto text = lnk->tooltip(); !text.isEmpty()) {
+			return text;
+		}
+	}
+	if (const auto view = Element::Moused()) {
 		StateRequest request;
 		const auto local = mapFromGlobal(_mousePosition);
 		const auto point = _widget->clampMousePosition(local);

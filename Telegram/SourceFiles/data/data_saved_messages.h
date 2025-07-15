@@ -9,6 +9,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "dialogs/dialogs_main_list.h"
 
+namespace Dialogs {
+struct UnreadState;
+} // namespace Dialogs
+
 namespace Main {
 class Session;
 } // namespace Main

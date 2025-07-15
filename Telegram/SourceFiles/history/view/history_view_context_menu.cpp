@@ -626,7 +626,9 @@ bool AddReplyToMessageAction(
 	const auto peer = item ? item->history()->peer.get() : nullptr;
 	if (!item
 		|| !item->isRegular()
-		|| (context != Context::History && context != Context::Replies)) {
+		|| (context != Context::History
+			&& context != Context::Replies
+			&& context != Context::Monoforum)) {
 		return false;
 	}
 	const auto canSendReply = topic
@@ -637,8 +639,13 @@ bool AddReplyToMessageAction(
 		return false;
 	}
 
+	const auto todoListTaskId = request.link
+		? request.link->property(kTodoListItemIdProperty).toInt()
+		: 0;
 	const auto &quote = request.quote;
-	auto text = (quote.text.empty()
+	auto text = (todoListTaskId
+		? tr::lng_context_reply_to_task
+		: quote.highlight.quote.empty()
 		? tr::lng_context_reply_msg
 		: tr::lng_context_quote_and_reply)(
 			tr::now,
@@ -646,10 +653,35 @@ bool AddReplyToMessageAction(
 	menu->addAction(std::move(text), [=, itemId = item->fullId()] {
 		list->replyToMessageRequestNotify({
 			.messageId = itemId,
-			.quote = quote.text,
-			.quoteOffset = quote.offset,
+			.quote = quote.highlight.quote,
+			.quoteOffset = quote.highlight.quoteOffset,
+			.todoItemId = todoListTaskId,
 		}, base::IsCtrlPressed());
 	}, &st::menuIconReply);
+	return true;
+}
+
+bool AddTodoListAction(
+		not_null<Ui::PopupMenu*> menu,
+		const ContextMenuRequest &request,
+		not_null<ListWidget*> list) {
+	const auto context = list->elementContext();
+	const auto item = request.item;
+	if (!item
+		|| !Window::PeerMenuShowAddTodoListTasks(item)
+		|| (context != Context::History
+			&& context != Context::Replies
+			&& context != Context::Monoforum
+			&& context != Context::Pinned)) {
+		return false;
+	}
+	const auto itemId = item->fullId();
+	const auto controller = list->controller();
+	menu->addAction(tr::lng_todo_add_title(tr::now), [=] {
+		if (const auto item = controller->session().data().message(itemId)) {
+			Window::PeerMenuAddTodoListTasks(controller, item);
+		}
+	}, &st::menuIconAdd);
 	return true;
 }
 
@@ -1281,6 +1313,7 @@ base::unique_qptr<Ui::PopupMenu> FillContextMenu(
 		st::popupMenuWithIcons);
 
 	AddReplyToMessageAction(result, request, list);
+	AddTodoListAction(result, request, list);
 
 	if (request.overSelection
 		&& !list->hasCopyRestrictionForSelected()
