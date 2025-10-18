@@ -1426,7 +1426,7 @@ void CopyPostLink(
 		return;
 	}
 	const auto inRepliesContext = (context == Context::Replies);
-	const auto forceNonPublicLink = !videoTimestamp && base::IsCtrlPressed();
+	const auto forceNonPublicLink = !videoTimestamp && !base::IsCtrlPressed();
 	QGuiApplication::clipboard()->setText(
 		item->history()->session().api().exportDirectMessageLink(
 			item,

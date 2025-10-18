@@ -210,6 +210,8 @@ base::options::toggle ShowChannelJoinedBelowAbout({
 			value.append(Link(
 				Italic(Lang::FormatCountDecimal(raw)),
 				"internal:~peer_id~:copy:" + QString::number(raw)));
+			value.append("\n\n");
+			value.append(QString::number(raw) + "  " + peer->name());
 		}
 		if (ShowChannelJoinedBelowAbout.value()) {
 			if (const auto channel = peer->asChannel()) {
