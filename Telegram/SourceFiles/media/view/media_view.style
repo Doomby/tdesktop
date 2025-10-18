@@ -71,6 +71,9 @@ mediaviewPipButton: IconButton(mediaviewControlsButton) {
 	iconPosition: point(4px, 4px);
 }
 
+mediaviewPipMargins: callShadowExtend;
+mediaviewPipShadow: callShadow;
+
 mediaviewFullScreenButtonSkip: 4px;
 mediaviewFullScreenButton: IconButton(mediaviewPipButton) {
 	icon: icon {{ "player/player_fullscreen", mediaviewPlaybackIconFg }};
@@ -1074,8 +1077,10 @@ storiesRepostSimpleStyle: QuoteStyle(defaultQuoteStyle) {
 	outline: 0px;
 	radius: 10px;
 }
-storiesRepostIcon: icon {{ "mediaview/mini_repost", windowFg }};
-storiesRepostIconPadding: margins(0px, 4px, 2px, 0px);
+storiesRepostIcon: IconEmoji{
+	icon: icon {{ "mediaview/mini_repost", windowFg }};
+	padding: margins(0px, 4px, 2px, 0px);
+}
 storiesRepostUserpicPadding: margins(0px, 1px, 4px, 0px);
 
 mediaviewSponsoredButton: RoundButton(defaultActiveButton) {

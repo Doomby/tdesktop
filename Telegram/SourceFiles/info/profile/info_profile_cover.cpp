@@ -18,29 +18,36 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_document.h"
 #include "data/data_document_media.h"
 #include "data/data_changes.h"
+#include "data/data_saved_music.h"
 #include "data/data_session.h"
 #include "data/data_forum_topic.h"
 #include "data/stickers/data_custom_emoji.h"
-#include "info/profile/info_profile_values.h"
 #include "info/profile/info_profile_badge.h"
 #include "info/profile/info_profile_emoji_status_panel.h"
+#include "info/profile/info_profile_music_button.h"
+#include "info/profile/info_profile_values.h"
+#include "info/saved/info_saved_music_widget.h"
 #include "info/info_controller.h"
+#include "info/info_memento.h"
 #include "boxes/peers/edit_forum_topic_box.h"
 #include "boxes/report_messages_box.h"
 #include "history/view/media/history_view_sticker_player.h"
 #include "lang/lang_keys.h"
 #include "ui/boxes/show_or_premium_box.h"
+#include "ui/controls/stars_rating.h"
 #include "ui/controls/userpic_button.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
 #include "ui/widgets/popup_menu.h"
 #include "ui/text/text_utilities.h"
+#include "ui/basic_click_handlers.h"
 #include "ui/ui_utility.h"
 #include "ui/painter.h"
 #include "base/event_filter.h"
 #include "base/unixtime.h"
 #include "window/window_controller.h"
 #include "window/window_session_controller.h"
+#include "main/main_app_config.h"
 #include "main/main_session.h"
 #include "settings/settings_premium.h"
 #include "chat_helpers/stickers_lottie.h"
@@ -59,15 +66,18 @@ constexpr auto kGiftBadgeGlares = 3;
 constexpr auto kGlareDurationStep = crl::time(320);
 constexpr auto kGlareTimeout = crl::time(1000);
 
-auto MembersStatusText(int count) {
+[[nodiscard]] auto MembersStatusText(int count) {
 	return tr::lng_chat_status_members(tr::now, lt_count_decimal, count);
 };
 
-auto OnlineStatusText(int count) {
+[[nodiscard]] auto OnlineStatusText(int count) {
 	return tr::lng_chat_status_online(tr::now, lt_count_decimal, count);
 };
 
-auto ChatStatusText(int fullCount, int onlineCount, bool isGroup) {
+[[nodiscard]] auto ChatStatusText(
+		int fullCount,
+		int onlineCount,
+		bool isGroup) {
 	if (onlineCount > 1 && onlineCount <= fullCount) {
 		return tr::lng_chat_status_members_online(
 			tr::now,
@@ -112,6 +122,22 @@ auto ChatStatusText(int fullCount, int onlineCount, bool isGroup) {
 	const auto left = (size - emoji) / 2;
 	const auto right = size - emoji - left;
 	return { left, left, right, right };
+}
+
+[[nodiscard]] MusicButtonData DocumentMusicButtonData(
+		not_null<DocumentData*> document) {
+	if (const auto song = document->song()) {
+		if (!song->performer.isEmpty() || !song->title.isEmpty()) {
+			return {
+				.performer = song->performer,
+				.title = song->title,
+			};
+		}
+	}
+	const auto name = document->filename();
+	return {
+		.title = !name.isEmpty() ? name : tr::lng_all_music(tr::now),
+	};
 }
 
 } // namespace
@@ -534,7 +560,7 @@ Cover::Cover(
 : Cover(
 	parent,
 	controller,
-	topic->channel(),
+	topic->peer(),
 	topic,
 	Role::Info,
 	TitleValue(topic),
@@ -587,10 +613,11 @@ Cover::Cover(
 , _emojiStatusPanel(peer->isSelf()
 	? std::make_unique<EmojiStatusPanel>()
 	: nullptr)
-, _botVerify(
-	std::make_unique<Badge>(
+, _botVerify(role == Role::EditContact
+	? nullptr
+	: std::make_unique<Badge>(
 		this,
-		st::infoPeerBadge,
+		st::infoBotVerifyBadge,
 		&peer->session(),
 		BotVerifyBadgeForPeer(peer),
 		nullptr,
@@ -599,8 +626,9 @@ Cover::Cover(
 				Window::GifPauseReason::Layer);
 		}))
 , _badgeContent(BadgeContentForPeer(peer))
-, _badge(
-	std::make_unique<Badge>(
+, _badge(role == Role::EditContact
+	? nullptr
+	: std::make_unique<Badge>(
 		this,
 		st::infoPeerBadge,
 		&peer->session(),
@@ -610,8 +638,9 @@ Cover::Cover(
 			return controller->isGifPausedAtLeastFor(
 				Window::GifPauseReason::Layer);
 		}))
-, _verified(
-	std::make_unique<Badge>(
+, _verified(role == Role::EditContact
+	? nullptr
+	: std::make_unique<Badge>(
 		this,
 		st::infoPeerBadge,
 		&peer->session(),
@@ -634,6 +663,7 @@ Cover::Cover(
 		_st.photo,
 		_peer->userpicShape()))
 , _changePersonal((role == Role::Info
+	|| role == Role::EditContact
 	|| topic
 	|| !_peer->isUser()
 	|| _peer->isSelf()
@@ -644,6 +674,16 @@ Cover::Cover(
 	? object_ptr<TopicIconButton>(this, controller, topic)
 	: nullptr)
 , _name(this, _st.name)
+, _starsRating(_peer->isUser() && _role != Role::EditContact
+	? std::make_unique<Ui::StarsRating>(
+		this,
+		_controller->uiShow(),
+		_peer->isSelf() ? QString() : _peer->shortName(),
+		Data::StarsRatingValue(_peer),
+		(_peer->isSelf()
+			? [=] { return _peer->owner().pendingStarsRating(); }
+			: Fn<Data::StarsRatingPending()>()))
+	: nullptr)
 , _status(this, _st.status)
 , _showLastSeen(this, tr::lng_status_lastseen_when(), _st.showLastSeen)
 , _refreshStatusTimer([this] { refreshStatusText(); }) {
@@ -657,28 +697,52 @@ Cover::Cover(
 
 	if (!_peer->isMegagroup()) {
 		_status->setAttribute(Qt::WA_TransparentForMouseEvents);
+		if (const auto rating = _starsRating.get()) {
+			_statusShift = rating->widthValue();
+			_statusShift.changes() | rpl::start_with_next([=] {
+				refreshStatusGeometry(width());
+			}, _status->lifetime());
+			rating->raise();
+		}
 	}
 
 	setupShowLastSeen();
 
-	_badge->setPremiumClickCallback([=] {
-		if (const auto panel = _emojiStatusPanel.get()) {
-			panel->show(_controller, _badge->widget(), _badge->sizeTag());
-		} else {
-			::Settings::ShowEmojiStatusPremium(_controller, _peer);
-		}
-	});
-	rpl::merge(
-		_botVerify->updated(),
-		_badge->updated(),
-		_verified->updated()
-	) | rpl::start_with_next([=] {
+	if (_badge) {
+		_badge->setPremiumClickCallback([=] {
+			if (const auto panel = _emojiStatusPanel.get()) {
+				panel->show(_controller, _badge->widget(), _badge->sizeTag());
+			} else {
+				::Settings::ShowEmojiStatusPremium(_controller, _peer);
+			}
+		});
+	}
+	auto badgeUpdates = rpl::producer<rpl::empty_value>();
+	if (_badge) {
+		badgeUpdates = rpl::merge(
+			std::move(badgeUpdates),
+			_badge->updated());
+	}
+	if (_verified) {
+		badgeUpdates = rpl::merge(
+			std::move(badgeUpdates),
+			_verified->updated());
+	}
+	if (_botVerify) {
+		badgeUpdates = rpl::merge(
+			std::move(badgeUpdates),
+			_botVerify->updated());
+	}
+	std::move(badgeUpdates) | rpl::start_with_next([=] {
 		refreshNameGeometry(width());
 	}, _name->lifetime());
 
 	initViewers(std::move(title));
 	setupChildGeometry();
 	setupUniqueBadgeTooltip();
+	if (_role != Role::EditContact) {
+		setupSavedMusic();
+	}
 
 	if (_userpic) {
 	} else if (topic->canEdit()) {
@@ -778,6 +842,43 @@ void Cover::setupChildGeometry() {
 		}
 		refreshNameGeometry(newWidth);
 		refreshStatusGeometry(newWidth);
+	}, lifetime());
+}
+
+void Cover::setupSavedMusic() {
+	if (!Data::SavedMusic::Supported(_peer->id)) {
+		return;
+	}
+	Data::SavedMusicList(
+		_peer,
+		nullptr,
+		1
+	) | rpl::map([=](const Data::SavedMusicSlice &data) {
+		return data.size() ? data[0].get() : nullptr;
+	}) | rpl::start_with_next([=](HistoryItem *item) {
+		const auto media = item ? item->media() : nullptr;
+		const auto document = media ? media->document() : nullptr;
+		if (!document) {
+			_musicButton = nullptr;
+			resize(width(), _st.height);
+		} else if (!_musicButton) {
+			using namespace Info::Saved;
+			_musicButton = std::make_unique<MusicButton>(
+				this,
+				DocumentMusicButtonData(document),
+				[=] { _controller->showSection(MakeMusic(_peer)); });
+			_musicButton->show();
+
+			widthValue(
+			) | rpl::start_with_next([=](int newWidth) {
+				_musicButton->resizeToWidth(newWidth);
+				const auto skip = st::infoMusicButtonBottom;
+				_musicButton->moveToLeft(0, _st.height - skip, newWidth);
+				resize(width(), _st.height + _musicButton->height());
+			}, _musicButton->lifetime());
+		} else {
+			_musicButton->updateData(DocumentMusicButtonData(document));
+		}
 	}, lifetime());
 }
 
@@ -1019,8 +1120,8 @@ Cover::~Cover() {
 
 void Cover::refreshNameGeometry(int newWidth) {
 	auto nameWidth = newWidth - _st.nameLeft - _st.rightSkip;
-	const auto verifiedWidget = _verified->widget();
-	const auto badgeWidget = _badge->widget();
+	const auto verifiedWidget = _verified ? _verified->widget() : nullptr;
+	const auto badgeWidget = _badge ? _badge->widget() : nullptr;
 	if (verifiedWidget) {
 		nameWidth -= verifiedWidget->width();
 	}
@@ -1035,28 +1136,38 @@ void Cover::refreshNameGeometry(int newWidth) {
 	const auto badgeBottom = _st.nameTop + _name->height();
 	const auto margins = LargeCustomEmojiMargins();
 
-	_botVerify->move(nameLeft - margins.left(), badgeTop, badgeBottom);
-	if (const auto widget = _botVerify->widget()) {
-		const auto skip = widget->width()
-			+ st::infoVerifiedCheckPosition.x();
-		nameLeft += skip;
-		nameWidth -= skip;
+	if (_botVerify) {
+		_botVerify->move(nameLeft - margins.left(), badgeTop, badgeBottom);
+		if (const auto widget = _botVerify->widget()) {
+			const auto skip = widget->width()
+				+ st::infoVerifiedCheckPosition.x();
+			nameLeft += skip;
+			nameWidth -= skip;
+		}
 	}
 	_name->resizeToNaturalWidth(nameWidth);
 	_name->moveToLeft(nameLeft, _st.nameTop, newWidth);
 	const auto badgeLeft = nameLeft + _name->width();
-	_badge->move(badgeLeft, badgeTop, badgeBottom);
-	_verified->move(
-		badgeLeft + (badgeWidget ? badgeWidget->width() : 0),
-		badgeTop,
-		badgeBottom);
+	if (_badge) {
+		_badge->move(badgeLeft, badgeTop, badgeBottom);
+	}
+	if (_verified) {
+		_verified->move(
+			badgeLeft + (badgeWidget ? badgeWidget->width() : 0),
+			badgeTop,
+			badgeBottom);
+	}
 }
 
 void Cover::refreshStatusGeometry(int newWidth) {
-	auto statusWidth = newWidth - _st.statusLeft - _st.rightSkip;
-	_status->resizeToWidth(statusWidth);
-	_status->moveToLeft(_st.statusLeft, _st.statusTop, newWidth);
-	const auto left = _st.statusLeft + _status->textMaxWidth();
+	if (const auto rating = _starsRating.get()) {
+		rating->moveTo(_st.starsRatingLeft, _st.starsRatingTop);
+	}
+	const auto statusLeft = _st.statusLeft + _statusShift.current();
+	auto statusWidth = newWidth - statusLeft - _st.rightSkip;
+	_status->resizeToNaturalWidth(statusWidth);
+	_status->moveToLeft(statusLeft, _st.statusTop, newWidth);
+	const auto left = statusLeft + _status->textMaxWidth();
 	_showLastSeen->moveToLeft(
 		left + _st.showLastSeenPosition.x(),
 		_st.showLastSeenPosition.y(),
@@ -1086,6 +1197,9 @@ void Cover::hideBadgeTooltip() {
 }
 
 void Cover::setupUniqueBadgeTooltip() {
+	if (!_badge) {
+		return;
+	}
 	base::timer_once(kWaitBeforeGiftBadge) | rpl::then(
 		_badge->updated()
 	) | rpl::start_with_next([=] {

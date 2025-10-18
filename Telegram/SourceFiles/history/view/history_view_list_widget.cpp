@@ -76,6 +76,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_message_reactions.h"
 #include "data/data_peer_values.h"
 #include "styles/style_chat.h"
+#include "styles/style_window.h" // columnMaximalWidthLeft
 
 #include <QtWidgets/QApplication>
 #include <QtCore/QMimeData>
@@ -95,8 +96,6 @@ constexpr auto kClearUserpicsAfter = 50;
 }
 
 } // namespace
-
-const crl::time ListWidget::kItemRevealDuration = crl::time(150);
 
 WindowListDelegate::WindowListDelegate(
 	not_null<Window::SessionController*> window)
@@ -1993,7 +1992,7 @@ void ListWidget::updateSize() {
 
 void ListWidget::resizeToWidth(int newWidth, int minHeight) {
 	_minHeight = minHeight;
-	TWidget::resizeToWidth(newWidth);
+	RpWidget::resizeToWidth(newWidth);
 	restoreScrollPosition();
 }
 
@@ -2009,8 +2008,8 @@ void ListWidget::startItemRevealAnimations() {
 					[=] { revealItemsCallback(); },
 					0.,
 					1.,
-					kItemRevealDuration,
-					anim::easeOutCirc);
+					st::itemRevealDuration,
+					anim::easeOutQuint);
 				if (view->data()->out()) {
 					_delegate->listChatTheme()->rotateComplexGradientBackground();
 				}
@@ -2021,6 +2020,11 @@ void ListWidget::startItemRevealAnimations() {
 
 void ListWidget::startMessageSendingAnimation(
 		not_null<HistoryItem*> item) {
+	if (elementChatMode() == HistoryView::ElementChatMode::Default
+		&& width() > st::columnMaximalWidthLeft
+		&& !item->media()) {
+		return;
+	}
 	const auto sendingAnimation = _delegate->listSendingAnimation();
 	if (!sendingAnimation || !sendingAnimation->checkExpectedType(item)) {
 		return;
@@ -3123,7 +3127,7 @@ void ListWidget::touchEvent(QTouchEvent *e) {
 			return;
 		}
 		_touchInProgress = false;
-		auto weak = Ui::MakeWeak(this);
+		auto weak = base::make_weak(this);
 		const auto notMoved = (_touchPos - _touchStart).manhattanLength()
 			< QApplication::startDragDistance();
 		if (_touchSelect) {
@@ -3205,7 +3209,7 @@ rpl::producer<bool> ListWidget::touchMaybeSelectingValue() const {
 void ListWidget::enterEventHook(QEnterEvent *e) {
 	_mouseActive = true;
 	mouseActionUpdate(QCursor::pos());
-	return TWidget::enterEventHook(e);
+	return RpWidget::enterEventHook(e);
 }
 
 void ListWidget::leaveEventHook(QEvent *e) {
@@ -3225,7 +3229,7 @@ void ListWidget::leaveEventHook(QEvent *e) {
 		setCursor(_cursor);
 	}
 	_mouseActive = false;
-	return TWidget::leaveEventHook(e);
+	return RpWidget::leaveEventHook(e);
 }
 
 void ListWidget::updateDragSelection() {
@@ -3625,10 +3629,8 @@ void ListWidget::mouseActionFinish(
 ClickHandlerContext ListWidget::prepareClickHandlerContext(FullMsgId id) {
 	return {
 		.itemId = id,
-		.elementDelegate = [weak = Ui::MakeWeak(this)] {
-			return weak
-				? (ElementDelegate*)weak
-				: nullptr;
+		.elementDelegate = [weak = base::make_weak(this)] {
+			return (ElementDelegate*)weak.get();
 		},
 		.sessionWindow = base::make_weak(controller()),
 	};
@@ -4347,9 +4349,9 @@ void ConfirmForwardSelectedItems(not_null<ListWidget*> widget) {
 		}
 	}
 	auto ids = widget->getSelectedIds();
-	const auto weak = Ui::MakeWeak(widget);
+	const auto weak = base::make_weak(widget);
 	Window::ShowForwardMessagesBox(widget->controller(), std::move(ids), [=] {
-		if (const auto strong = weak.data()) {
+		if (const auto strong = weak.get()) {
 			strong->cancelSelection();
 		}
 	});
@@ -4378,8 +4380,8 @@ void ConfirmSendNowSelectedItems(not_null<ListWidget*> widget) {
 	if (!history) {
 		return;
 	}
-	const auto clearSelection = [weak = Ui::MakeWeak(widget)] {
-		if (const auto strong = weak.data()) {
+	const auto clearSelection = [weak = base::make_weak(widget)] {
+		if (const auto strong = weak.get()) {
 			strong->cancelSelection();
 		}
 	};

@@ -831,7 +831,7 @@ void ChooseRecipientBoxController::rowClicked(not_null<PeerListRow*> row) {
 	auto guard = base::make_weak(this);
 	const auto peer = row->peer();
 	if (const auto forum = peer->forum()) {
-		const auto weak = std::make_shared<QPointer<Ui::BoxContent>>();
+		const auto weak = std::make_shared<base::weak_qptr<Ui::BoxContent>>();
 		auto callback = [=](not_null<Data::ForumTopic*> topic) {
 			const auto exists = guard.get();
 			if (!exists) {
@@ -870,7 +870,7 @@ void ChooseRecipientBoxController::rowClicked(not_null<PeerListRow*> row) {
 		delegate()->peerListUiShow()->showBox(std::move(owned));
 		return;
 	} else if (const auto monoforum = peer->monoforum()) {
-		const auto weak = std::make_shared<QPointer<Ui::BoxContent>>();
+		const auto weak = std::make_shared<base::weak_qptr<Ui::BoxContent>>();
 		auto callback = [=](not_null<Data::SavedSublist*> sublist) {
 			const auto exists = guard.get();
 			if (!exists) {
@@ -981,9 +981,9 @@ void ChooseTopicSearchController::searchQuery(const QString &query) {
 }
 
 void ChooseTopicSearchController::searchOnServer() {
-	_requestId = _api.request(MTPchannels_GetForumTopics(
-		MTP_flags(MTPchannels_GetForumTopics::Flag::f_q),
-		_forum->channel()->inputChannel,
+	_requestId = _api.request(MTPmessages_GetForumTopics(
+		MTP_flags(MTPmessages_GetForumTopics::Flag::f_q),
+		_forum->peer()->input,
 		MTP_string(_query),
 		MTP_int(_offsetDate),
 		MTP_int(_offsetId),

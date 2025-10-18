@@ -336,8 +336,8 @@ bool TopBarWidget::createMenu(not_null<Ui::IconButton*> button) {
 		this,
 		st::popupMenuExpandedSeparator);
 	_menu->setDestroyedCallback([
-			weak = Ui::MakeWeak(this),
-			weakButton = Ui::MakeWeak(button),
+			weak = base::make_weak(this),
+			weakButton = base::make_weak(button),
 			menu = _menu.get()] {
 		if (weak && weak->_menu == menu) {
 			if (weakButton) {
@@ -824,9 +824,12 @@ void TopBarWidget::setActiveChat(
 
 			if (const auto channel = peer->asChannel()) {
 				if (channel->canEditStories()
-					&& !channel->owner().stories().archiveCountKnown(
-						channel->id)) {
-					channel->owner().stories().archiveLoadMore(channel->id);
+					&& !channel->owner().stories().albumIdsCountKnown(
+						channel->id,
+						Data::kStoriesAlbumIdArchive)) {
+					channel->owner().stories().albumIdsLoadMore(
+						channel->id,
+						Data::kStoriesAlbumIdArchive);
 				}
 			}
 		}
@@ -843,7 +846,7 @@ void TopBarWidget::setActiveChat(
 
 		if (const auto topic = _activeChat.key.topic()) {
 			Info::Profile::NameValue(
-				topic->channel()
+				topic->peer()
 			) | rpl::start_with_next([=](const QString &name) {
 				_titlePeerText.setText(st::dialogsTextStyle, name);
 				_titlePeerTextOnline = false;
