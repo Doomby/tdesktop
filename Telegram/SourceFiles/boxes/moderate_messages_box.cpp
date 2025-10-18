@@ -138,6 +138,8 @@ void CreateModerateMessagesBox(
 		not_null<Ui::GenericBox*> box,
 		const HistoryItemsList &items,
 		Fn<void()> confirmed) {
+	Expects(!items.empty());
+
 	using Controller = Ui::ExpandablePeerListController;
 
 	const auto [allCanBan, allCanDelete, participants]
@@ -158,8 +160,12 @@ void CreateModerateMessagesBox(
 				participants.size()).width(),
 			0);
 
-	const auto session = &items.front()->history()->session();
-	const auto historyPeerId = items.front()->history()->peer->id;
+	const auto itemsCount = int(items.size());
+	const auto firstItem = items.front();
+	const auto history = firstItem->history();
+	const auto session = &history->session();
+	const auto historyPeerId = history->peer->id;
+	const auto ids = session->data().itemsToIds(items);
 
 	using Request = Fn<void(not_null<PeerData*>, not_null<ChannelData*>)>;
 	const auto sequentiallyRequest = [=](
@@ -242,11 +248,11 @@ void CreateModerateMessagesBox(
 	const auto title = box->addRow(
 		object_ptr<Ui::FlatLabel>(
 			box,
-			(items.size() == 1)
+			(itemsCount == 1)
 				? tr::lng_selected_delete_sure_this()
 				: tr::lng_selected_delete_sure(
 					lt_count,
-					rpl::single(items.size()) | tr::to_count()),
+					rpl::single(itemsCount) | tr::to_count()),
 			st::boxLabel));
 	Ui::AddSkip(inner);
 	Ui::AddSkip(inner);
@@ -264,7 +270,6 @@ void CreateModerateMessagesBox(
 		Ui::AddExpandablePeerList(report, controller, inner);
 		handleSubmition(report);
 
-		const auto ids = items.front()->from()->owner().itemsToIds(items);
 		handleConfirmation(report, controller, [=](
 				not_null<PeerData*> p,
 				not_null<ChannelData*> c) {
@@ -296,12 +301,11 @@ void CreateModerateMessagesBox(
 					: tr::lng_delete_all_from_user(
 						tr::now,
 						lt_user,
-						Ui::Text::Bold(items.front()->from()->name()),
+						Ui::Text::Bold(firstItem->from()->name()),
 						Ui::Text::WithEntities),
 				false,
 				st::defaultBoxCheckbox),
 			st::boxRowPadding + buttonPadding);
-		const auto history = items.front()->history();
 		auto messagesCounts = MessagesCountValue(history, participants);
 
 		const auto controller = box->lifetime().make_state<Controller>(
@@ -311,6 +315,10 @@ void CreateModerateMessagesBox(
 			});
 		Ui::AddExpandablePeerList(deleteAll, controller, inner);
 		{
+			auto itemFromIds = items | ranges::views::transform([](
+					const auto &item) {
+				return item->from()->id;
+			}) | ranges::to_vector;
 			tr::lng_selected_delete_sure(
 				lt_count,
 				rpl::combine(
@@ -320,7 +328,7 @@ void CreateModerateMessagesBox(
 						: rpl::merge(
 							controller->toggleRequestsFromInner.events(),
 							controller->checkAllRequests.events())
-				) | rpl::map([=, s = items.size()](const auto &map, bool c) {
+				) | rpl::map([=](const auto &map, bool c) {
 					const auto checked = (isSingle && !c)
 						? Participants()
 						: controller->collectRequests
@@ -335,9 +343,9 @@ void CreateModerateMessagesBox(
 							}
 						}
 					}
-					for (const auto &item : items) {
+					for (const auto &fromId : itemFromIds) {
 						for (const auto &peer : checked) {
-							if (peer->id == item->from()->id) {
+							if (peer->id == fromId) {
 								result--;
 								break;
 							}
@@ -403,22 +411,10 @@ void CreateModerateMessagesBox(
 			const auto container = wrap->entity();
 			wrap->toggle(false, anim::type::instant);
 
-			const auto session = &participants.front()->session();
-			const auto emojiMargin = QMargins(
-				-st::moderateBoxExpandInnerSkip,
-				-st::moderateBoxExpandInnerSkip / 2,
-				0,
-				0);
-			const auto emojiUp = Ui::Text::SingleCustomEmoji(
-				session->data().customEmojiManager().registerInternalEmoji(
-					st::moderateBoxExpandIcon,
-					emojiMargin,
-					false));
-			const auto emojiDown = Ui::Text::SingleCustomEmoji(
-				session->data().customEmojiManager().registerInternalEmoji(
-					st::moderateBoxExpandIconDown,
-					emojiMargin,
-					false));
+			const auto emojiUp = Ui::Text::IconEmoji(
+				&st::moderateBoxExpandIcon);
+			const auto emojiDown = Ui::Text::IconEmoji(
+				&st::moderateBoxExpandIconDown);
 
 			auto label = object_ptr<Ui::FlatLabel>(
 				inner,
@@ -463,9 +459,7 @@ void CreateModerateMessagesBox(
 						Ui::Text::WithEntities);
 			}) | rpl::flatten_latest(
 			) | rpl::start_with_next([=](const TextWithEntities &text) {
-				raw->setMarkedText(
-					Ui::Text::Link(text, u"internal:"_q),
-					Core::TextContext({ .session = session }));
+				raw->setMarkedText(Ui::Text::Link(text, u"internal:"_q));
 			}, label->lifetime());
 
 			Ui::AddSkip(inner);

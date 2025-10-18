@@ -49,6 +49,7 @@ void RecentSharedMediaGifts::request(
 		MTPpayments_GetSavedStarGifts(
 			MTP_flags(0),
 			peer->input,
+			MTP_int(0), // collection_id
 			MTP_string(QString()),
 			MTP_int(kMaxGifts)
 	)).done([=](const MTPpayments_SavedStarGifts &result) {
@@ -64,9 +65,9 @@ void RecentSharedMediaGifts::request(
 		auto conter = 0;
 		for (const auto &gift : data.vgifts().v) {
 			if (auto parsed = Api::FromTL(peer, gift)) {
-				entry.ids.push_front(parsed->info.document->id);
+				entry.ids.push_back(parsed->info.document->id);
 				if (entry.ids.size() > kMaxGifts) {
-					entry.ids.pop_back();
+					entry.ids.pop_front();
 				}
 				if (++conter >= kMaxGifts) {
 					break;

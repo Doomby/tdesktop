@@ -72,6 +72,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session_settings.h"
 #include "info/info_controller.h"
 #include "info/info_memento.h"
+#include "info/profile/info_profile_values.h"
 #include "inline_bots/bot_attach_web_view.h"
 #include "history/history.h"
 #include "history/history_item.h"
@@ -633,6 +634,10 @@ bool ResolveUsernameOrPhone(
 	}
 	const auto storyParam = params.value(u"story"_q);
 	const auto storyId = storyParam.toInt();
+	const auto storyAlbumParam = params.value(u"album"_q);
+	const auto storyAlbumId = storyAlbumParam.toInt();
+	const auto giftCollectionParam = params.value(u"collection"_q);
+	const auto giftCollectionId = giftCollectionParam.toInt();
 	const auto appname = webChannelPreviewLink ? QString() : appnameParam;
 	const auto commentParam = params.value(u"comment"_q);
 	const auto commentId = commentParam.toInt();
@@ -642,7 +647,9 @@ bool ResolveUsernameOrPhone(
 	const auto threadId = topicId ? topicId : threadParam.toInt();
 	const auto gameParam = params.value(u"game"_q);
 	const auto videot = params.value(u"t"_q);
-
+	if (params.contains(u"direct"_q)) {
+		resolveType = ResolveType::ChannelDirect;
+	}
 	if (!gameParam.isEmpty() && validDomain(gameParam)) {
 		startToken = gameParam;
 		resolveType = ResolveType::ShareGame;
@@ -659,6 +666,8 @@ bool ResolveUsernameOrPhone(
 		.phone = phone,
 		.messageId = post,
 		.storyId = storyId,
+		.storyAlbumId = storyAlbumId,
+		.giftCollectionId = giftCollectionId,
 		.videoTimestamp = (!videot.isEmpty()
 			? ParseVideoTimestamp(videot)
 			: std::optional<TimeId>()),
@@ -702,6 +711,8 @@ bool ResolveUsernameOrPhone(
 			: std::nullopt),
 		.clickFromMessageId = myContext.itemId,
 		.clickFromBotWebviewContext = myContext.botWebviewContext,
+		.historyInNewWindow =
+			(params.value(u"tdesktop_target"_q) == u"blank"_q),
 	});
 	return true;
 }
@@ -918,6 +929,58 @@ bool ShowEditBirthday(
 	} else if (controller->showFrozenError()) {
 		return true;
 	}
+
+	const auto captured = match->captured(1);
+	if (captured.startsWith(u":suggest:"_q)) {
+		const auto userIdStr = captured.mid(9); // Skip ":suggest:"
+		const auto userId = UserId(userIdStr.toULongLong());
+		if (!userId) {
+			return false;
+		}
+
+		const auto targetUser
+			= controller->session().data().userLoaded(userId);
+		if (!targetUser) {
+			return false;
+		}
+
+		const auto save = [=](Data::Birthday result) {
+			using BFlag = MTPDbirthday::Flag;
+			controller->session().api().request(MTPusers_SuggestBirthday(
+				targetUser->inputUser,
+				MTP_birthday(
+					MTP_flags(result.year() ? BFlag::f_year : BFlag()),
+					MTP_int(result.day()),
+					MTP_int(result.month()),
+					MTP_int(result.year()))
+			)).done(crl::guard(controller, [=] {
+				controller->showPeerHistory(targetUser);
+				controller->showToast(
+					tr::lng_settings_birthday_suggested(
+						tr::now,
+						lt_user,
+						targetUser->name()));
+			})).fail(crl::guard(controller, [=](const MTP::Error &error) {
+				const auto type = error.type();
+				controller->showToast(type.startsWith(u"FLOOD_WAIT_"_q)
+					? tr::lng_flood_error(tr::now)
+					: (u"Error: "_q + error.type()));
+			})).handleFloodErrors().send();
+		};
+
+		controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+			box->setTitle(tr::lng_suggest_birthday_box_title(
+				lt_user,
+				Info::Profile::NameValue(targetUser)));
+			Ui::EditBirthdayBox(
+				box,
+				Data::Birthday(),
+				save,
+				Ui::EditBirthdayType::Suggest);
+		}));
+		return true;
+	}
+
 	const auto user = controller->session().user();
 	const auto save = [=](Data::Birthday result) {
 		user->setBirthday(result);
@@ -940,8 +1003,20 @@ bool ShowEditBirthday(
 				: (u"Error: "_q + error.type()));
 		})).handleFloodErrors().send();
 	};
-	if (match->captured(1).isEmpty()) {
-		controller->show(Box(Ui::EditBirthdayBox, user->birthday(), save));
+	if (captured.startsWith(u":suggestion_"_q)) {
+		const auto suggested = Data::Birthday::FromSerialized(
+			captured.mid(u":suggestion_"_q.size()).toInt());
+		controller->show(Box(
+			Ui::EditBirthdayBox,
+			suggested,
+			save,
+			Ui::EditBirthdayType::ConfirmSuggestion));
+	} else if (captured.isEmpty()) {
+		controller->show(Box(
+			Ui::EditBirthdayBox,
+			user->birthday(),
+			save,
+			Ui::EditBirthdayType::Edit));
 	} else {
 		controller->show(Box([=](not_null<Ui::GenericBox*> box) {
 			Ui::EditBirthdayBox(box, user->birthday(), save);
@@ -1081,7 +1156,17 @@ bool ShowCollectibleUsername(
 	}
 	const auto username = match->captured(1);
 	const auto peerId = PeerId(match->captured(2).toULongLong());
-	controller->resolveCollectible(peerId, username);
+	const auto weak = base::make_weak(controller);
+	controller->resolveCollectible(peerId, username, [=](const QString &e) {
+		if (e == u"COLLECTIBLE_NOT_FOUND"_q) {
+			if (const auto strong = weak.get()) {
+				TextUtilities::SetClipboardText({
+					strong->session().createInternalLinkFull(username)
+				});
+				strong->showToast(tr::lng_username_copied(tr::now));
+			}
+		}
+	});
 	return true;
 }
 
@@ -1300,8 +1385,9 @@ bool ResolveTestChatTheme(
 		qthelp::UrlParamNameTransform::ToLower);
 	if (const auto history = controller->activeChatCurrent().history()) {
 		controller->clearCachedChatThemes();
-		const auto theme = history->owner().cloudThemes().updateThemeFromLink(
-			history->peer->themeEmoji(),
+		const auto owner = &history->owner();
+		const auto theme = owner->cloudThemes().updateThemeFromLink(
+			history->peer->themeToken(),
 			params);
 		if (theme) {
 			if (!params["export"].isEmpty()) {
@@ -1530,6 +1616,18 @@ bool ResolveStarsSettings(
 	return true;
 }
 
+bool ResolveTonSettings(
+		Window::SessionController *controller,
+		const Match &match,
+		const QVariant &context) {
+	if (!controller) {
+		return false;
+	}
+	controller->showSettings(::Settings::CurrencyId());
+	controller->window().activate();
+	return true;
+}
+
 } // namespace
 
 const std::vector<LocalUrlHandler> &LocalUrlHandlers() {
@@ -1633,6 +1731,10 @@ const std::vector<LocalUrlHandler> &LocalUrlHandlers() {
 		{
 			u"^stars/?(^\\?.*)?(#|$)"_q,
 			ResolveStarsSettings
+		},
+		{
+			u"^ton/?(^\\?.*)?(#|$)"_q,
+			ResolveTonSettings
 		},
 		{
 			u"^([^\\?]+)(\\?|#|$)"_q,
@@ -1827,6 +1929,8 @@ QString TryConvertUrlToLocal(QString url) {
 				"/[a-zA-Z0-9\\.\\_\\-]+/?(\\?|$)|"
 				"/\\d+/?(\\?|$)|"
 				"/s/\\d+/?(\\?|$)|"
+				"/a/\\d+/?(\\?|$)|"
+				"/c/\\d+/?(\\?|$)|"
 				"/\\d+/\\d+/?(\\?|$)"
 			")"_q, query, matchOptions)) {
 			const auto domain = usernameMatch->captured(1);
@@ -1849,6 +1953,10 @@ QString TryConvertUrlToLocal(QString url) {
 				added = u"&post="_q + postMatch->captured(1);
 			} else if (const auto storyMatch = regex_match(u"^/s/(\\d+)(/?\\?|/?$)"_q, usernameMatch->captured(2))) {
 				added = u"&story="_q + storyMatch->captured(1);
+			} else if (const auto albumMatch = regex_match(u"^/a/(\\d+)(/?\\?|/?$)"_q, usernameMatch->captured(2))) {
+				added = u"&album="_q + albumMatch->captured(1);
+			} else if (const auto collectionMatch = regex_match(u"^/c/(\\d+)(/?\\?|/?$)"_q, usernameMatch->captured(2))) {
+				added = u"&collection="_q + collectionMatch->captured(1);
 			} else if (const auto appNameMatch = regex_match(u"^/([a-zA-Z0-9\\.\\_\\-]+)(/?\\?|/?$)"_q, usernameMatch->captured(2))) {
 				added = u"&appname="_q + appNameMatch->captured(1);
 			}
@@ -1923,7 +2031,12 @@ void ResolveAndShowUniqueGift(
 		session->data().processUsers(data.vusers());
 		if (const auto gift = Api::FromTL(session, data.vgift())) {
 			using namespace ::Settings;
-			show->show(Box(GlobalStarGiftBox, show, *gift, PeerId(), st));
+			show->show(Box(
+				GlobalStarGiftBox,
+				show,
+				*gift,
+				StarGiftResaleInfo(),
+				st));
 		}
 	}).fail([=](const MTP::Error &error) {
 		clear();

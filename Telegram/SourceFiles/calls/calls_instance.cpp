@@ -164,6 +164,8 @@ void Instance::Delegate::groupCallPlaySound(GroupCallSound sound) {
 		case GroupCallSound::Ended: return "group_call_end";
 		case GroupCallSound::AllowedToSpeak: return "group_call_allowed";
 		case GroupCallSound::Connecting: return "group_call_connect";
+		case GroupCallSound::RecordingStarted:
+			return "group_call_recording_start";
 		}
 		Unexpected("GroupCallSound in Instance::groupCallPlaySound.");
 	}());
@@ -594,6 +596,10 @@ void Instance::handleUpdate(
 		handleGroupCallUpdate(session, update);
 	}, [&](const MTPDupdateGroupCallChainBlocks &data) {
 		handleGroupCallUpdate(session, update);
+	}, [&](const MTPDupdateGroupCallMessage &data) {
+		handleGroupCallUpdate(session, update);
+	}, [&](const MTPDupdateGroupCallEncryptedMessage &data) {
+		handleGroupCallUpdate(session, update);
 	}, [](const auto &) {
 		Unexpected("Update type in Calls::Instance::handleUpdate.");
 	});
@@ -709,11 +715,17 @@ void Instance::handleGroupCallUpdate(
 			groupCall->handlePossibleCreateOrJoinResponse(data);
 		}, [&](const MTPDupdateGroupCallConnection &data) {
 			groupCall->handlePossibleCreateOrJoinResponse(data);
+		}, [&](const MTPDupdateGroupCallMessage &data) {
+			groupCall->handleIncomingMessage(data);
+		}, [&](const MTPDupdateGroupCallEncryptedMessage &data) {
+			groupCall->handleIncomingMessage(data);
 		}, [](const auto &) {
 		});
 	}
 
-	if (update.type() == mtpc_updateGroupCallConnection) {
+	if (update.type() == mtpc_updateGroupCallConnection
+		|| update.type() == mtpc_updateGroupCallMessage
+		|| update.type() == mtpc_updateGroupCallEncryptedMessage) {
 		return;
 	}
 	const auto callId = update.match([](const MTPDupdateGroupCall &data) {
